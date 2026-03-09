@@ -26,7 +26,7 @@
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro",
-      "output": "static",
+      "output": "single",
       "name": "TeamTracker",
       "shortName": "TeamTracker",
       "description": "Co-ed soccer team performance tracker",
