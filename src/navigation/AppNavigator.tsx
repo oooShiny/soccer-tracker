@@ -4,12 +4,10 @@ import { Text } from "react-native";
 import { colors } from "../theme";
 
 import DashboardScreen from "../screens/DashboardScreen";
-import {
-  GamesScreen,
-  PlayersScreen,
-  SeasonsScreen,
-  SettingsScreen,
-} from "../screens/PlaceholderScreens";
+import { GamesScreen } from "../screens/GamesScreen";
+import { PlayersScreen } from "../screens/PlayersScreen";
+import { SeasonsScreen } from "../screens/SeasonsScreen";
+import { SettingsScreen } from "../screens/SettingsScreen";
 
 const Tab = createBottomTabNavigator();
 
