@@ -7,13 +7,12 @@ import { getFirestore } from "firebase/firestore";
 // You can find them in the Firebase Console under:
 // Project Settings > General > Your apps > Web app
 const firebaseConfig = {
-    apiKey: "REMOVED",
-    authDomain: "REMOVED",
-    projectId: "REMOVED",
-    storageBucket: "REMOVED",
-    messagingSenderId: "REMOVED",
-    appId: "REMOVED",
-    measurementId: "REMOVED"
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID",
 };
 
 const app = initializeApp(firebaseConfig);
