@@ -1,0 +1,64 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helper Functions ───────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getRole(teamId) {
+      return get(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid)).data.role;
+    }
+
+    function isMember(teamId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid));
+    }
+
+    function isEditor(teamId) {
+      return isMember(teamId) &&
+        (getRole(teamId) == 'editor' || getRole(teamId) == 'admin');
+    }
+
+    function isAdmin(teamId) {
+      return isMember(teamId) && getRole(teamId) == 'admin';
+    }
+
+    // ─── Teams ──────────────────────────────────────────────────
+    match /teams/{teamId} {
+      allow read: if isMember(teamId);
+      allow create: if isSignedIn(); // Anyone can create a team
+      allow update, delete: if isAdmin(teamId);
+
+      // ─── Seasons ────────────────────────────────────────────
+      match /seasons/{seasonId} {
+        allow read: if isMember(teamId);
+        allow create, update, delete: if isAdmin(teamId);
+      }
+
+      // ─── Games ──────────────────────────────────────────────
+      match /games/{gameId} {
+        allow read: if isMember(teamId);
+        allow create, update: if isEditor(teamId);
+        allow delete: if isAdmin(teamId);
+      }
+
+      // ─── Players ────────────────────────────────────────────
+      match /players/{playerId} {
+        allow read: if isMember(teamId);
+        allow create, update: if isEditor(teamId);
+        allow delete: if isAdmin(teamId);
+      }
+
+      // ─── Members ────────────────────────────────────────────
+      match /members/{uid} {
+        allow read: if isMember(teamId);
+        allow create, update, delete: if isAdmin(teamId);
+        // Allow users to read their own membership
+        allow read: if isSignedIn() && request.auth.uid == uid;
+      }
+    }
+  }
+}
