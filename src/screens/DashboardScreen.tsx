@@ -22,7 +22,11 @@ export default function DashboardScreen() {
 
   const topScorer = [...players].sort((a, b) => b.goals - a.goals)[0];
   const topAssist = [...players].sort((a, b) => b.assists - a.assists)[0];
-  const nextGame = seasonGames.find((g) => g.ourScore == null);
+  const upcomingGames = [...seasonGames]
+    .filter((g) => g.ourScore == null)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const nextMatchDate = upcomingGames[0]?.date;
+  const nextGames = upcomingGames.filter((g) => g.date === nextMatchDate);
 
   return (
     <ScrollView style={s.container}>
@@ -98,19 +102,21 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* Next game */}
-      {nextGame && (
+      {/* Next match(es) */}
+      {nextGames.length > 0 && (
         <>
-          <SectionHeader>NEXT MATCH</SectionHeader>
-          <Card style={{ borderLeftWidth: 3, borderLeftColor: colors.blue }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <View>
-                <Text style={s.opponentName}>vs {nextGame.opponent}</Text>
-                <Text style={s.dateText}>{formatDate(nextGame.date)}</Text>
+          <SectionHeader>{nextGames.length > 1 ? "NEXT MATCHES" : "NEXT MATCH"}</SectionHeader>
+          {nextGames.map((game) => (
+            <Card key={game.id} style={{ borderLeftWidth: 3, borderLeftColor: colors.blue }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <View>
+                  <Text style={s.opponentName}>vs {game.opponent}</Text>
+                  <Text style={s.dateText}>{formatDate(game.date)}</Text>
+                </View>
+                <Badge color={colors.blue} bg={colors.blueDim}>Upcoming</Badge>
               </View>
-              <Badge color={colors.blue} bg={colors.blueDim}>Upcoming</Badge>
-            </View>
-          </Card>
+            </Card>
+          ))}
         </>
       )}
 
