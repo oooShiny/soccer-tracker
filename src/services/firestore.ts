@@ -224,3 +224,76 @@ export const updateMemberRole = async (
 export const removeMember = async (teamId: string, uid: string) => {
   return deleteDoc(doc(membersRef(teamId), uid));
 };
+
+// ─── Invites ──────────────────────────────────────────────────────
+const invitesRef = (teamId: string) => collection(db, "teams", teamId, "invites");
+
+export interface Invite {
+  id: string;
+  email: string;
+  role: UserRole;
+  invitedBy: string;
+  createdAt: Date;
+}
+
+export const subscribeToInvites = (
+  teamId: string,
+  callback: (invites: Invite[]) => void
+): Unsubscribe => {
+  return onSnapshot(invitesRef(teamId), (snap) => {
+    const invites = snap.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+      createdAt: (d.data().createdAt as Timestamp)?.toDate(),
+    })) as Invite[];
+    callback(invites);
+  });
+};
+
+export const createInvite = async (
+  teamId: string,
+  email: string,
+  role: UserRole,
+  invitedBy: string
+) => {
+  return addDoc(invitesRef(teamId), {
+    email: email.toLowerCase().trim(),
+    role,
+    invitedBy,
+    createdAt: serverTimestamp(),
+  });
+};
+
+export const deleteInvite = async (teamId: string, inviteId: string) => {
+  return deleteDoc(doc(invitesRef(teamId), inviteId));
+};
+
+export const claimInvite = async (
+  teamId: string,
+  invite: Invite,
+  uid: string,
+  displayName: string
+) => {
+  // Create the member document
+  const { setDoc: sd } = await import("firebase/firestore");
+  await sd(doc(membersRef(teamId), uid), {
+    email: invite.email,
+    displayName,
+    role: invite.role,
+    joinedAt: serverTimestamp(),
+    invitedBy: invite.invitedBy,
+  });
+  // Delete the invite
+  await deleteDoc(doc(invitesRef(teamId), invite.id));
+};
+
+export const findInviteByEmail = async (
+  teamId: string,
+  email: string
+): Promise<Invite | null> => {
+  const q = query(invitesRef(teamId), where("email", "==", email.toLowerCase().trim()));
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { id: d.id, ...d.data(), createdAt: (d.data().createdAt as Timestamp)?.toDate() } as Invite;
+};

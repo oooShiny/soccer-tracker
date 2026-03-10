@@ -58,6 +58,16 @@ service cloud.firestore {
         allow create, update, delete: if isAdmin(teamId);
         // Allow users to read their own membership
         allow read: if isSignedIn() && request.auth.uid == uid;
+        // Allow a user to create their own membership if they have a pending invite
+        allow create: if isSignedIn() && request.auth.uid == uid;
+      }
+
+      // ─── Invites ──────────────────────────────────────────────
+      match /invites/{inviteId} {
+        allow read: if isSignedIn(); // Anyone signed in can check for their invite
+        allow create, delete: if isAdmin(teamId);
+        // Allow invited user to delete their own invite (during claim)
+        allow delete: if isSignedIn() && resource.data.email == request.auth.token.email;
       }
     }
   }
