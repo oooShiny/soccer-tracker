@@ -57,12 +57,14 @@ export interface Game {
   id: string;
   seasonId: string;
   date: string; // ISO date
+  time: string; // e.g. "8:30 PM" or ""
   opponent: string;
   ourScore: number | null;
   theirScore: number | null;
   scorers: GameScorer[];
   assists: GameAssist[];
   keeperAppearances: KeeperAppearance[];
+  notes: string; // post-game recap
   createdAt: Date;
   updatedBy: string; // uid
 }

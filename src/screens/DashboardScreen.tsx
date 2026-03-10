@@ -20,8 +20,6 @@ export default function DashboardScreen() {
   const position = activeSeason ? getOurPosition(activeSeason.standings) : 0;
   const teamName = activeSeason?.teamName ?? "Our Team";
 
-  const topScorer = [...players].sort((a, b) => b.goals - a.goals)[0];
-  const topAssist = [...players].sort((a, b) => b.assists - a.assists)[0];
   const upcomingGames = [...seasonGames]
     .filter((g) => g.ourScore == null)
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -82,25 +80,33 @@ export default function DashboardScreen() {
         </>
       )}
 
-      {/* Top performers */}
-      {(topScorer || topAssist) && (
-        <View style={s.twoCol}>
-          {topScorer && topScorer.goals > 0 && (
-            <Card style={{ flex: 1 }}>
-              <Text style={s.miniLabel}>TOP SCORER</Text>
-              <Text style={s.playerName}>{topScorer.name}</Text>
-              <Text style={[s.bigStat, { color: colors.accent }]}>{topScorer.goals} <Text style={s.bigStatLabel}>goals</Text></Text>
+      {/* Top Scorers - season leaderboard */}
+      {(() => {
+        const goalMap: Record<string, number> = {};
+        for (const g of seasonGames) {
+          if (g.ourScore == null) continue;
+          for (const sc of g.scorers) { goalMap[sc.playerId] = (goalMap[sc.playerId] || 0) + sc.goals; }
+        }
+        const topScorers = Object.entries(goalMap)
+          .map(([id, goals]) => ({ id, goals, name: players.find(p => p.id === id)?.name || "Unknown" }))
+          .sort((a, b) => b.goals - a.goals)
+          .slice(0, 5);
+        if (topScorers.length === 0) return null;
+        return (
+          <>
+            <SectionHeader>TOP SCORERS</SectionHeader>
+            <Card>
+              {topScorers.map((entry, i) => (
+                <View key={entry.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 6, borderBottomWidth: i < topScorers.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+                  <Text style={{ width: 28, fontFamily: "monospace", fontWeight: "700", fontSize: 14, color: i === 0 ? "#FFD700" : i === 1 ? "#C0C0C0" : i === 2 ? "#CD7F32" : colors.textDim }}>{i + 1}</Text>
+                  <Text style={{ flex: 1, fontWeight: "600", fontSize: 14, color: colors.text }}>{entry.name}</Text>
+                  <Text style={{ fontFamily: "monospace", fontWeight: "700", fontSize: 16, color: colors.accent }}>{entry.goals}</Text>
+                </View>
+              ))}
             </Card>
-          )}
-          {topAssist && topAssist.assists > 0 && (
-            <Card style={{ flex: 1 }}>
-              <Text style={s.miniLabel}>TOP ASSISTS</Text>
-              <Text style={s.playerName}>{topAssist.name}</Text>
-              <Text style={[s.bigStat, { color: colors.blue }]}>{topAssist.assists} <Text style={s.bigStatLabel}>assists</Text></Text>
-            </Card>
-          )}
-        </View>
-      )}
+          </>
+        );
+      })()}
 
       {/* Next match(es) */}
       {nextGames.length > 0 && (
