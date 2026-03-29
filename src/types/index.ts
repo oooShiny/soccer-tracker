@@ -64,6 +64,7 @@ export interface Game {
   scorers: GameScorer[];
   assists: GameAssist[];
   keeperAppearances: KeeperAppearance[];
+  absentPlayerIds: string[]; // players who missed this game
   notes: string; // post-game recap
   createdAt: Date;
   updatedBy: string; // uid

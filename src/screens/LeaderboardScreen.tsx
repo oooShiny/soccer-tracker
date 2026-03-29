@@ -16,46 +16,62 @@ interface LeaderboardEntry {
 }
 
 function computeGoalLeaderboard(games: Game[], players: Player[]): LeaderboardEntry[] {
-  const goalMap: Record<string, { goals: number; games: Set<string> }> = {};
+  const goalMap: Record<string, number> = {};
+  const gamesPlayed: Record<string, number> = {};
 
   for (const game of games) {
     if (game.ourScore == null) continue;
+    const absent = game.absentPlayerIds || [];
+    // Count games played for all present players
+    for (const player of players) {
+      if (player.active === false) continue;
+      if (!absent.includes(player.id)) {
+        gamesPlayed[player.id] = (gamesPlayed[player.id] || 0) + 1;
+      }
+    }
     for (const scorer of game.scorers) {
-      if (!goalMap[scorer.playerId]) goalMap[scorer.playerId] = { goals: 0, games: new Set() };
-      goalMap[scorer.playerId].goals += scorer.goals;
-      goalMap[scorer.playerId].games.add(game.id);
+      goalMap[scorer.playerId] = (goalMap[scorer.playerId] || 0) + scorer.goals;
     }
   }
 
   return Object.entries(goalMap)
-    .map(([playerId, data]) => {
+    .map(([playerId, goals]) => {
       const player = players.find(p => p.id === playerId);
+      const gp = gamesPlayed[playerId] || 1;
       return {
         playerId,
         name: player?.name || "Unknown",
         number: player?.number || 0,
-        goals: data.goals,
-        games: data.games.size,
-        perGame: data.goals / data.games.size,
+        goals,
+        games: gp,
+        perGame: goals / gp,
       };
     })
     .sort((a, b) => b.goals - a.goals);
 }
 
 function computeAssistLeaderboard(games: Game[], players: Player[]) {
-  const map: Record<string, { assists: number; games: Set<string> }> = {};
+  const map: Record<string, number> = {};
+  const gamesPlayed: Record<string, number> = {};
+
   for (const game of games) {
     if (game.ourScore == null) continue;
+    const absent = game.absentPlayerIds || [];
+    for (const player of players) {
+      if (player.active === false) continue;
+      if (!absent.includes(player.id)) {
+        gamesPlayed[player.id] = (gamesPlayed[player.id] || 0) + 1;
+      }
+    }
     for (const a of game.assists) {
-      if (!map[a.playerId]) map[a.playerId] = { assists: 0, games: new Set() };
-      map[a.playerId].assists += a.count;
-      map[a.playerId].games.add(game.id);
+      map[a.playerId] = (map[a.playerId] || 0) + a.count;
     }
   }
   return Object.entries(map)
-    .map(([playerId, data]) => {
+    .map(([playerId, assists]) => {
       const player = players.find(p => p.id === playerId);
-      return { playerId, name: player?.name || "Unknown", number: player?.number || 0, assists: data.assists, games: data.games.size, perGame: data.assists / data.games.size };
+      const gp = gamesPlayed[playerId] || 1;
+      return { playerId, name: player?.name || "Unknown", number: player?.number || 0, assists, games: gp, perGame: assists / gp };
     })
     .sort((a, b) => b.assists - a.assists);
 }
