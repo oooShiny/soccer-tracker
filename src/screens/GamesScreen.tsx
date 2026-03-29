@@ -14,9 +14,10 @@ interface GameForm {
   keeperAppearances: { playerId: string; minutes: string; goalsAgainst: string; saves: string }[];
   scorers: { playerId: string; goals: string }[];
   assists: { playerId: string; count: string }[];
+  absentPlayerIds: string[];
 }
 
-const emptyForm = (): GameForm => ({ date: "", time: "", opponent: "", ourScore: "", theirScore: "", notes: "", keeperAppearances: [], scorers: [], assists: [] });
+const emptyForm = (): GameForm => ({ date: "", time: "", opponent: "", ourScore: "", theirScore: "", notes: "", keeperAppearances: [], scorers: [], assists: [], absentPlayerIds: [] });
 
 const gameToForm = (g: Game): GameForm => ({
   date: g.date, time: g.time || "", opponent: g.opponent, notes: g.notes || "",
@@ -24,6 +25,7 @@ const gameToForm = (g: Game): GameForm => ({
   keeperAppearances: g.keeperAppearances.map(ka => ({ playerId: ka.playerId, minutes: String(ka.minutes), goalsAgainst: String(ka.goalsAgainst), saves: String(ka.saves) })),
   scorers: g.scorers.map(s => ({ playerId: s.playerId, goals: String(s.goals) })),
   assists: g.assists.map(a => ({ playerId: a.playerId, count: String(a.count) })),
+  absentPlayerIds: g.absentPlayerIds || [],
 });
 
 export function GamesScreen() {
@@ -72,6 +74,7 @@ export function GamesScreen() {
         scorers: form.scorers.filter(s => s.playerId).map(s => ({ playerId: s.playerId, goals: parseInt(s.goals) || 1 })),
         assists: form.assists.filter(a => a.playerId).map(a => ({ playerId: a.playerId, count: parseInt(a.count) || 1 })),
         keeperAppearances: form.keeperAppearances.filter(k => k.playerId).map(k => ({ playerId: k.playerId, minutes: parseInt(k.minutes) || 0, goalsAgainst: parseInt(k.goalsAgainst) || 0, saves: parseInt(k.saves) || 0 })),
+        absentPlayerIds: form.absentPlayerIds,
       };
       if (editingGame) await updateGame(teamId, editingGame.id, data, user.uid);
       else await createGame(teamId, data as any, user.uid);
@@ -172,6 +175,16 @@ export function GamesScreen() {
                 const k = players.find(p => p.id === ka.playerId);
                 return (<View key={i} style={st.keeperRow}><Text style={{ color: colors.text, fontSize: 14 }}>🧤 {k?.name || "Unknown"} <Text style={{ color: colors.textMuted }}>{ka.minutes}'</Text></Text><View style={{ flexDirection: "row", gap: 12 }}><Text style={{ color: colors.danger, fontSize: 12 }}>{ka.goalsAgainst} GA</Text><Text style={{ color: colors.accent, fontSize: 12 }}>{ka.saves} Svs</Text></View></View>);
               })}
+            </View>
+          )}
+
+          {/* Absent players */}
+          {selectedGame.absentPlayerIds?.length > 0 && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={st.modalLabel}>ABSENT</Text>
+              <Text style={{ color: colors.textDim, fontSize: 14 }}>
+                {selectedGame.absentPlayerIds.map(id => { const p = players.find(pl => pl.id === id); return p?.name || "Unknown"; }).join(", ")}
+              </Text>
             </View>
           )}
 
@@ -398,6 +411,42 @@ export function GamesScreen() {
         ))}
         <TouchableOpacity onPress={() => setForm({ ...form, keeperAppearances: [...form.keeperAppearances, { playerId: "", minutes: "90", goalsAgainst: "0", saves: "0" }] })} style={st.addRow}><Text style={st.addRowText}>+ Add keeper</Text></TouchableOpacity>
 
+        {/* ─── Absent Players ─────────────────────────────────── */}
+        <Text style={st.formSection}>WHO'S MISSING?</Text>
+        <Text style={{ fontSize: 12, color: colors.textDim, marginBottom: 10 }}>Tap players who aren't at this game. Everyone else counts as present.</Text>
+
+        <View style={st.playerGrid}>
+          {players.filter(p => p.active !== false).map(p => {
+            const isAbsent = form.absentPlayerIds.includes(p.id);
+            return (
+              <TouchableOpacity
+                key={p.id}
+                onPress={() => {
+                  const newAbsent = isAbsent
+                    ? form.absentPlayerIds.filter(id => id !== p.id)
+                    : [...form.absentPlayerIds, p.id];
+                  setForm({ ...form, absentPlayerIds: newAbsent });
+                }}
+                style={[st.gridBtn, isAbsent && st.gridBtnAbsent]}
+                activeOpacity={0.6}
+              >
+                <Text style={[st.gridBtnNumber, isAbsent && { color: colors.danger }]}>{p.number}</Text>
+                <Text style={[st.gridBtnName, isAbsent && { color: colors.danger }]} numberOfLines={1}>{p.name.split(" ")[0]}</Text>
+                {isAbsent && (
+                  <View style={st.absentBadge}>
+                    <Text style={{ color: "#fff", fontSize: 10, fontWeight: "800" }}>OUT</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        {form.absentPlayerIds.length > 0 && (
+          <Text style={{ fontSize: 12, color: colors.textDim, marginBottom: 8 }}>
+            {players.filter(p => p.active !== false).length - form.absentPlayerIds.length} present / {form.absentPlayerIds.length} absent
+          </Text>
+        )}
+
         <FormInput label="Notes" value={form.notes} onChangeText={v => setForm({ ...form, notes: v })} placeholder="How did the game go?" multiline />
 
         {editingGame && canEdit && <TouchableOpacity onPress={handleDelete} style={st.deleteBtn}><Text style={st.deleteBtnText}>Delete Game</Text></TouchableOpacity>}
@@ -451,6 +500,7 @@ const st = StyleSheet.create({
   },
   gridBtnActive: { backgroundColor: colors.accentDim, borderColor: colors.accent },
   gridBtnAssistActive: { backgroundColor: colors.blueDim, borderColor: colors.blue },
+  gridBtnAbsent: { backgroundColor: colors.dangerDim, borderColor: colors.danger, opacity: 0.85 },
   gridBtnNumber: { fontSize: 16, fontWeight: "700", fontFamily: "monospace", color: colors.textDim },
   gridBtnNumberActive: { color: colors.accent },
   gridBtnName: { fontSize: 10, color: colors.textDim, marginTop: 1 },
@@ -461,6 +511,11 @@ const st = StyleSheet.create({
     alignItems: "center" as const, justifyContent: "center" as const,
   },
   goalBadgeText: { color: colors.bg, fontSize: 11, fontWeight: "800" },
+  absentBadge: {
+    position: "absolute" as const, top: -4, right: -4,
+    paddingHorizontal: 4, paddingVertical: 1, borderRadius: 6, backgroundColor: colors.danger,
+    alignItems: "center" as const, justifyContent: "center" as const,
+  },
   scorerSummaryRow: {
     flexDirection: "row" as const, alignItems: "center" as const, justifyContent: "space-between" as const,
     paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8,
