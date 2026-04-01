@@ -96,18 +96,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signUp = async (email: string, password: string, displayName: string) => {
     setAuthError(null);
     try {
-      // Check for invite first
+      // Create the Firebase Auth account first so we're authenticated for Firestore reads
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      
+      // Now check for invite (we're signed in so Firestore allows the read)
       const invite = await findInviteByEmail(TEAM_ID, email);
       if (!invite) {
+        // No invite found — delete the auth account we just created
+        await cred.user.delete();
         setAuthError("No invite found for this email. Ask your team admin for an invite.");
-        throw new Error("No invite");
+        return;
       }
-      // Create the Firebase Auth account
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      // Claim the invite (creates the member doc)
+      
+      // Claim the invite (creates the member doc and deletes the invite)
       await claimInvite(TEAM_ID, invite, cred.user.uid, displayName);
     } catch (err: any) {
-      if (err.message === "No invite") return;
       const code = err?.code || "";
       if (code === "auth/email-already-in-use") setAuthError("An account with this email already exists. Try signing in.");
       else if (code === "auth/weak-password") setAuthError("Password must be at least 6 characters.");
