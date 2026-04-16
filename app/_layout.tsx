@@ -2,6 +2,7 @@ import { Slot } from "expo-router";
 import { ThemeProvider } from "@react-navigation/native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "../src/hooks/useAuth";
+import { GameEditProvider } from "../src/components/GameEditProvider";
 import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
 import { colors } from "../src/theme";
@@ -29,10 +30,12 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <AuthProvider>
         <ThemeProvider value={navTheme}>
-          <View style={{ flex: 1, backgroundColor: colors.bg }}>
-            <Slot />
-            <StatusBar style="light" />
-          </View>
+          <GameEditProvider>
+            <View style={{ flex: 1, backgroundColor: colors.bg }}>
+              <Slot />
+              <StatusBar style="light" />
+            </View>
+          </GameEditProvider>
         </ThemeProvider>
       </AuthProvider>
     </SafeAreaProvider>

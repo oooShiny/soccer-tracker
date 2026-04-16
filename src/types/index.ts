@@ -89,6 +89,7 @@ export interface Player {
   gamesPlayed: number;
   keeperStats: KeeperStats | null;
   active: boolean;
+  inactiveSeasonIds: string[]; // seasons where this player is inactive
 }
 
 // ─── Computed / UI Types ──────────────────────────────────────────

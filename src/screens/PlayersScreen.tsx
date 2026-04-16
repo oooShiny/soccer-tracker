@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
 import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
-import { usePlayers } from "../hooks/useFirestore";
+import { usePlayers, useSeasons } from "../hooks/useFirestore";
 import { createPlayer, updatePlayer } from "../services/firestore";
 import { Card, Badge, StatBox } from "../components/SharedUI";
 import { FormModal, FormInput, FormPicker, FormCheckbox, FormButtons } from "../components/FormComponents";
@@ -12,17 +12,25 @@ interface PlayerForm { name: string; number: string; position: string; canPlayKe
 const emptyForm = (): PlayerForm => ({ name: "", number: "", position: "Midfielder", canPlayKeeper: false });
 const playerToForm = (p: Player): PlayerForm => ({ name: p.name, number: String(p.number), position: p.positions[0] || "Midfielder", canPlayKeeper: p.canPlayKeeper });
 
+const isInactiveForSeason = (p: Player, seasonId?: string): boolean => {
+  if (!seasonId) return false;
+  return (p.inactiveSeasonIds || []).includes(seasonId);
+};
+
 export function PlayersScreen() {
   const { teamId, canEdit } = useAuth();
   const { data: players } = usePlayers(teamId);
+  const { data: seasons } = useSeasons(teamId);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<PlayerForm>(emptyForm());
   const [saving, setSaving] = useState(false);
 
-  const fieldOnly = players.filter(p => !p.keeperStats);
-  const keepers = players.filter(p => p.keeperStats);
+  const activeSeason = seasons.find(s => s.status === "Active");
+  const fieldOnly = players.filter(p => !p.keeperStats && !isInactiveForSeason(p, activeSeason?.id));
+  const keepers = players.filter(p => p.keeperStats && !isInactiveForSeason(p, activeSeason?.id));
+  const inactivePlayers = players.filter(p => isInactiveForSeason(p, activeSeason?.id));
 
   const openNew = () => { setEditingPlayer(null); setForm(emptyForm()); setShowForm(true); };
   const openEdit = (p: Player) => { setEditingPlayer(p); setForm(playerToForm(p)); setShowForm(true); setSelectedPlayer(null); };
@@ -43,6 +51,7 @@ export function PlayersScreen() {
         gamesPlayed: editingPlayer?.gamesPlayed ?? 0,
         keeperStats: editingPlayer?.keeperStats ?? null,
         active: true,
+        inactiveSeasonIds: editingPlayer?.inactiveSeasonIds ?? [],
       };
       if (editingPlayer) {
         await updatePlayer(teamId, editingPlayer.id, data);
@@ -117,6 +126,24 @@ export function PlayersScreen() {
         </>
       )}
 
+      {/* Inactive for this season */}
+      {inactivePlayers.length > 0 && (
+        <>
+          <Text style={[s.header, { marginTop: spacing.lg }]}>INACTIVE THIS SEASON</Text>
+          {inactivePlayers.map(p => (
+            <TouchableOpacity key={p.id} onPress={() => setSelectedPlayer(p)} activeOpacity={0.7}>
+              <Card style={{ padding: 12, paddingHorizontal: 16, opacity: 0.6 }}>
+                <View style={s.playerRow}>
+                  <Text style={[s.mono, { width: 36, color: colors.textDim }]}>{p.number}</Text>
+                  <Text style={{ flex: 1, fontWeight: "600", fontSize: 14, color: colors.textDim }}>{p.name}</Text>
+                  <Badge color={colors.danger} bg={colors.dangerDim}>Inactive</Badge>
+                </View>
+              </Card>
+            </TouchableOpacity>
+          ))}
+        </>
+      )}
+
       {/* Player Detail Modal */}
       {selectedPlayer && (
         <FormModal visible={true} title={`#${selectedPlayer.number} ${selectedPlayer.name}`} onClose={() => setSelectedPlayer(null)}>
@@ -146,6 +173,39 @@ export function PlayersScreen() {
             </View>
           )}
           <Text style={{ textAlign: "center", marginTop: 12, fontSize: 12, color: colors.textMuted }}>{selectedPlayer.gamesPlayed} total appearances</Text>
+
+          {/* Season activity toggle */}
+          {canEdit && activeSeason && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={s.modalLabel}>SEASON STATUS</Text>
+              {(() => {
+                const inactive = isInactiveForSeason(selectedPlayer, activeSeason.id);
+                return (
+                  <TouchableOpacity
+                    onPress={async () => {
+                      if (!teamId) return;
+                      const current = selectedPlayer.inactiveSeasonIds || [];
+                      const updated = inactive
+                        ? current.filter(id => id !== activeSeason.id)
+                        : [...current, activeSeason.id];
+                      await updatePlayer(teamId, selectedPlayer.id, { inactiveSeasonIds: updated } as any);
+                      setSelectedPlayer({ ...selectedPlayer, inactiveSeasonIds: updated });
+                    }}
+                    style={[s.statusToggle, inactive ? s.statusInactive : s.statusActive]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ color: inactive ? colors.danger : colors.accent, fontWeight: "600", fontSize: 14 }}>
+                      {inactive ? "❌ Inactive for " : "✅ Active for "}{activeSeason.name}
+                    </Text>
+                    <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 2 }}>
+                      Tap to {inactive ? "reactivate" : "mark inactive"}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })()}
+            </View>
+          )}
+
           {canEdit && (
             <TouchableOpacity onPress={() => openEdit(selectedPlayer)} style={s.editBtn}><Text style={s.editBtnText}>✏️ Edit Player</Text></TouchableOpacity>
           )}
@@ -182,6 +242,9 @@ const s = StyleSheet.create({
   mono: { fontFamily: "monospace", fontSize: 13 },
   dualNote: { fontSize: 11, color: colors.textDim, marginTop: 1 },
   modalLabel: { fontSize: 11, color: colors.textDim, fontWeight: "600", letterSpacing: 1, marginBottom: 10 },
-  editBtn: { backgroundColor: colors.blueDim, padding: 12, borderRadius: radii.md, alignItems: "center", marginTop: 16 },
+  editBtn: { backgroundColor: colors.blueDim, padding: 12, borderRadius: radii.md, alignItems: "center" as const, marginTop: 16 },
   editBtnText: { color: colors.blue, fontWeight: "600", fontSize: 14 },
+  statusToggle: { padding: 14, borderRadius: radii.md, alignItems: "center" as const, borderWidth: 1 },
+  statusActive: { backgroundColor: colors.accentDim, borderColor: colors.accent },
+  statusInactive: { backgroundColor: colors.dangerDim, borderColor: colors.danger },
 });

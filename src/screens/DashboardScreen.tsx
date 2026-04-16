@@ -5,6 +5,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useSeasons, useGames, usePlayers } from "../hooks/useFirestore";
 import { computeSeasonRecord, getRecentForm, getOurPosition, positionSuffix, formatDate } from "../services/utils";
 import { Card, StatBox, SectionHeader, StandingsTable, Badge } from "../components/SharedUI";
+import { GameCard } from "../components/GameCard";
 
 export default function DashboardScreen() {
   const { teamId } = useAuth();
@@ -112,17 +113,7 @@ export default function DashboardScreen() {
       {nextGames.length > 0 && (
         <>
           <SectionHeader>{nextGames.length > 1 ? "NEXT MATCHES" : "NEXT MATCH"}</SectionHeader>
-          {nextGames.map((game) => (
-            <Card key={game.id} style={{ borderLeftWidth: 3, borderLeftColor: colors.blue }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <View>
-                  <Text style={s.opponentName}>vs {game.opponent}</Text>
-                  <Text style={s.dateText}>{formatDate(game.date)}</Text>
-                </View>
-                <Badge color={colors.blue} bg={colors.blueDim}>Upcoming</Badge>
-              </View>
-            </Card>
-          ))}
+          {nextGames.map((game) => <GameCard key={game.id} game={game} />)}
         </>
       )}
 

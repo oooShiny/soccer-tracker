@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform } from "react-native";
 import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
 import { useSeasons, useMembers } from "../hooks/useFirestore";
@@ -7,6 +7,21 @@ import { createInvite, deleteInvite, updateMemberRole, removeMember, subscribeTo
 import { Card, Badge, SectionHeader } from "../components/SharedUI";
 import { FormModal, FormInput, FormPicker, FormButtons } from "../components/FormComponents";
 import type { UserRole } from "../types";
+
+const APP_URL = "https://soccer-tracker-five.vercel.app";
+
+const copyToClipboard = async (text: string) => {
+  try {
+    if (navigator?.clipboard) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {}
+  return false;
+};
+
+const buildInviteMessage = (email: string, teamName: string) =>
+  `You've been invited to ${teamName} on TeamTracker! Sign up at ${APP_URL} with your email: ${email}`;
 
 export function SettingsScreen() {
   const { user, role, signOut, isAdmin, teamId } = useAuth();
@@ -18,6 +33,11 @@ export function SettingsScreen() {
   const [inviteRole, setInviteRole] = useState<UserRole>("editor");
   const [saving, setSaving] = useState(false);
   const [editingMember, setEditingMember] = useState<{ uid: string; role: UserRole } | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [justInvited, setJustInvited] = useState<{ email: string } | null>(null);
+
+  const activeSeason = seasons.find(s => s.status === "Active");
+  const teamName = activeSeason?.teamName || "Our Team";
 
   useEffect(() => {
     if (!teamId) return;
@@ -26,15 +46,35 @@ export function SettingsScreen() {
   }, [teamId]);
 
   const handleInvite = async () => {
-    if (!teamId || !user || !inviteEmail.trim()) return;
+    if (!teamId || !user || !inviteEmail.trim()) {
+      console.warn("Invite blocked:", { teamId, user: !!user, email: inviteEmail });
+      return;
+    }
     setSaving(true);
     try {
+      console.log("Creating invite for", inviteEmail, "with role", inviteRole, "on team", teamId);
       await createInvite(teamId, inviteEmail, inviteRole, user.uid);
+      console.log("Invite created successfully");
+      setJustInvited({ email: inviteEmail.trim() });
       setShowInviteForm(false);
       setInviteEmail("");
       setInviteRole("editor");
-    } catch (err) { console.error(err); }
+    } catch (err: any) {
+      console.error("Invite creation failed:", err);
+      // Show error visually since console might not be open
+      setShowInviteForm(false);
+      setJustInvited(null);
+    }
     setSaving(false);
+  };
+
+  const handleCopyInvite = async (email: string, id?: string) => {
+    const msg = buildInviteMessage(email, teamName);
+    const ok = await copyToClipboard(msg);
+    if (ok) {
+      setCopiedId(id || "just-invited");
+      setTimeout(() => setCopiedId(null), 2500);
+    }
   };
 
   const handleDeleteInvite = async (inviteId: string) => {
@@ -123,6 +163,25 @@ export function SettingsScreen() {
         </Card>
       ))}
 
+      {/* Just invited success banner */}
+      {justInvited && (
+        <Card style={{ borderLeftWidth: 3, borderLeftColor: colors.accent, marginBottom: spacing.sm }}>
+          <Text style={{ color: colors.text, fontSize: 14, fontWeight: "600", marginBottom: 8 }}>✅ Invite created for {justInvited.email}</Text>
+          <Text style={{ color: colors.textDim, fontSize: 12, marginBottom: 10, lineHeight: 18 }}>Share this message so they know how to join:</Text>
+          <View style={{ backgroundColor: colors.bg, borderRadius: radii.sm, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 10 }}>
+            <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 18 }}>{buildInviteMessage(justInvited.email, teamName)}</Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TouchableOpacity onPress={() => handleCopyInvite(justInvited.email)} style={s.copyBtn}>
+              <Text style={s.copyBtnText}>{copiedId === "just-invited" ? "✓ Copied!" : "📋 Copy Message"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setJustInvited(null)} style={{ padding: 10 }}>
+              <Text style={{ color: colors.textMuted, fontSize: 13 }}>Dismiss</Text>
+            </TouchableOpacity>
+          </View>
+        </Card>
+      )}
+
       {/* Pending Invites */}
       {invites.length > 0 && (
         <>
@@ -140,11 +199,16 @@ export function SettingsScreen() {
                     >{inv.role}</Badge>
                   </View>
                 </View>
-                {isAdmin && (
-                  <TouchableOpacity onPress={() => handleDeleteInvite(inv.id)}>
-                    <Text style={{ color: colors.danger, fontSize: 16 }}>✕</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <TouchableOpacity onPress={() => handleCopyInvite(inv.email, inv.id)} style={s.copySmallBtn}>
+                    <Text style={s.copySmallText}>{copiedId === inv.id ? "✓" : "📋"}</Text>
                   </TouchableOpacity>
-                )}
+                  {isAdmin && (
+                    <TouchableOpacity onPress={() => handleDeleteInvite(inv.id)}>
+                      <Text style={{ color: colors.danger, fontSize: 16 }}>✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             </Card>
           ))}
@@ -213,6 +277,10 @@ const s = StyleSheet.create({
   inviteBtnText: { color: colors.bg, fontSize: 13, fontWeight: "700" },
   memberName: { fontWeight: "600", color: colors.text },
   memberEmail: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
+  copyBtn: { backgroundColor: colors.accentDim, paddingHorizontal: 16, paddingVertical: 10, borderRadius: radii.md, borderWidth: 1, borderColor: colors.accent },
+  copyBtnText: { color: colors.accent, fontSize: 13, fontWeight: "600" },
+  copySmallBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, alignItems: "center" as const, justifyContent: "center" as const },
+  copySmallText: { fontSize: 14 },
   removeBtn: { padding: 12, borderRadius: radii.md, backgroundColor: colors.dangerDim, alignItems: "center", marginTop: 8, marginBottom: 8 },
   removeBtnText: { color: colors.danger, fontWeight: "600", fontSize: 14 },
   footer: { marginTop: 32, alignItems: "center", gap: 4 },
