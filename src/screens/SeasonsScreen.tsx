@@ -3,40 +3,54 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-nati
 import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
 import { useSeasons, useGames } from "../hooks/useFirestore";
-import { updateStandings } from "../services/firestore";
-import { sortStandings, getOurPosition, positionSuffix, computeSeasonRecord, formatDate, getResult, getResultColor, calcPoints } from "../services/utils";
+import { createSeason, updateStandings } from "../services/firestore";
+import { sortStandings, getOurPosition, positionSuffix, computeSeasonRecord } from "../services/utils";
 import { Card, Badge, StatBox, SectionHeader, StandingsTable } from "../components/SharedUI";
-import { FormModal, FormInput, FormButtons, NumInput } from "../components/FormComponents";
+import { GameCard } from "../components/GameCard";
+import { useGameEdit } from "../components/GameEditProvider";
+import { FormModal, FormInput, FormPicker, FormButtons, NumInput } from "../components/FormComponents";
 import type { Season, StandingsRow } from "../types";
 
 export function SeasonsScreen() {
   const { teamId, canEdit, isAdmin } = useAuth();
   const { data: seasons } = useSeasons(teamId);
   const { data: games } = useGames(teamId);
+  const { newGame } = useGameEdit();
   const [selectedSeason, setSelectedSeason] = useState<Season | null>(null);
   const [editingStandings, setEditingStandings] = useState(false);
   const [standingsForm, setStandingsForm] = useState<StandingsRow[]>([]);
   const [newTeamName, setNewTeamName] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const openStandingsEdit = (season: Season) => {
-    setStandingsForm(sortStandings(season.standings));
-    setEditingStandings(true);
-  };
+  // Add Season form
+  const [showAddSeason, setShowAddSeason] = useState(false);
+  const [seasonForm, setSeasonForm] = useState({ name: "", teamName: "", division: "", startDate: "", endDate: "", status: "Active" as string });
+  const [newLeagueTeams, setNewLeagueTeams] = useState<string[]>([""]);
 
-  const updateRow = (i: number, field: keyof StandingsRow, val: string) => {
-    const u = [...standingsForm];
-    (u[i] as any)[field] = field === "team" ? val : parseInt(val) || 0;
-    setStandingsForm(u);
-  };
+  const openStandingsEdit = (season: Season) => { setStandingsForm(sortStandings(season.standings)); setEditingStandings(true); };
+  const updateRow = (i: number, field: keyof StandingsRow, val: string) => { const u = [...standingsForm]; (u[i] as any)[field] = field === "team" ? val : parseInt(val) || 0; setStandingsForm(u); };
 
   const handleSaveStandings = async () => {
     if (!teamId || !selectedSeason) return;
     setSaving(true);
+    try { await updateStandings(teamId, selectedSeason.id, standingsForm); setSelectedSeason({ ...selectedSeason, standings: standingsForm }); setEditingStandings(false); } catch (err) { console.error(err); }
+    setSaving(false);
+  };
+
+  const handleAddSeason = async () => {
+    if (!teamId || !seasonForm.name.trim()) return;
+    setSaving(true);
     try {
-      await updateStandings(teamId, selectedSeason.id, standingsForm);
-      setSelectedSeason({ ...selectedSeason, standings: standingsForm });
-      setEditingStandings(false);
+      const otherTeams = newLeagueTeams.filter(t => t.trim()).map(t => ({ team: t.trim(), w: 0, d: 0, l: 0, gf: 0, ga: 0 }));
+      const standings = [{ team: "Our Team", w: 0, d: 0, l: 0, gf: 0, ga: 0 }, ...otherTeams];
+      await createSeason(teamId, {
+        name: seasonForm.name, teamName: seasonForm.teamName || "Our Team", division: seasonForm.division,
+        status: seasonForm.status as any, startDate: seasonForm.startDate, endDate: seasonForm.endDate,
+        result: null, standings,
+      });
+      setShowAddSeason(false);
+      setSeasonForm({ name: "", teamName: "", division: "", startDate: "", endDate: "", status: "Active" });
+      setNewLeagueTeams([""]);
     } catch (err) { console.error(err); }
     setSaving(false);
   };
@@ -45,7 +59,6 @@ export function SeasonsScreen() {
   if (selectedSeason) {
     const seasonGames = games.filter(g => g.seasonId === selectedSeason.id).sort((a, b) => b.date.localeCompare(a.date));
     const record = computeSeasonRecord(seasonGames);
-    const pos = getOurPosition(selectedSeason.standings);
 
     return (
       <ScrollView style={s.container}>
@@ -76,27 +89,12 @@ export function SeasonsScreen() {
         </View>
         <StandingsTable standings={selectedSeason.standings} teamName={selectedSeason.teamName} />
 
-        <SectionHeader>RESULTS</SectionHeader>
-        {seasonGames.map(g => {
-          const result = getResult(g); const color = getResultColor(result); const played = g.ourScore != null;
-          return (
-            <Card key={g.id} style={{ borderLeftWidth: 3, borderLeftColor: color }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-                  <View style={[s.resultBadge, { backgroundColor: result === "W" ? colors.accentDim : result === "L" ? colors.dangerDim : result === "D" ? colors.warnDim : colors.blueDim }]}>
-                    <Text style={[s.resultText, { color }]}>{result === "Upcoming" ? "—" : result === "D" ? "T" : result}</Text>
-                  </View>
-                  <View>
-                    <Text style={{ fontWeight: "600", fontSize: 15, color: colors.text }}>vs {g.opponent}</Text>
-                    <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>{formatDate(g.date)}</Text>
-                  </View>
-                </View>
-                {played ? <Text style={{ fontFamily: "monospace", fontSize: 22, fontWeight: "700", color }}>{g.ourScore} – {g.theirScore}</Text>
-                  : <Badge color={colors.blue} bg={colors.blueDim}>Upcoming</Badge>}
-              </View>
-            </Card>
-          );
-        })}
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: spacing.md }}>
+          <SectionHeader>RESULTS</SectionHeader>
+          {canEdit && <TouchableOpacity onPress={() => newGame(selectedSeason.id)} style={s.addBtn}><Text style={s.addBtnText}>+ Add Game</Text></TouchableOpacity>}
+        </View>
+        {seasonGames.map(g => <GameCard key={g.id} game={g} />)}
+        {seasonGames.length === 0 && <Card><Text style={{ color: colors.textDim, textAlign: "center" }}>No games recorded yet.</Text></Card>}
 
         {/* Edit Standings Modal */}
         <FormModal visible={editingStandings} title="Edit Standings" onClose={() => setEditingStandings(false)}>
@@ -111,25 +109,18 @@ export function SeasonsScreen() {
           </View>
           {standingsForm.map((row, i) => (
             <View key={i} style={s.standingsRow}>
-              <Text style={[s.standingsTeam, { flex: 1, color: row.team === "Our Team" ? colors.accent : colors.text }]}>
-                {row.team === "Our Team" ? selectedSeason.teamName : row.team}
-              </Text>
+              <Text style={[s.standingsTeam, { flex: 1, color: row.team === "Our Team" ? colors.accent : colors.text }]}>{row.team === "Our Team" ? selectedSeason.teamName : row.team}</Text>
               <NumInput value={String(row.w)} onChangeText={v => updateRow(i, "w", v)} width={44} />
               <NumInput value={String(row.l)} onChangeText={v => updateRow(i, "l", v)} width={44} />
               <NumInput value={String(row.d)} onChangeText={v => updateRow(i, "d", v)} width={44} />
               <NumInput value={String(row.gf)} onChangeText={v => updateRow(i, "gf", v)} width={44} />
               <NumInput value={String(row.ga)} onChangeText={v => updateRow(i, "ga", v)} width={44} />
-              {row.team !== "Our Team" ? (
-                <TouchableOpacity onPress={() => setStandingsForm(standingsForm.filter((_, j) => j !== i))}><Text style={{ color: colors.danger, fontSize: 16 }}>✕</Text></TouchableOpacity>
-              ) : <View style={{ width: 24 }} />}
+              {row.team !== "Our Team" ? <TouchableOpacity onPress={() => setStandingsForm(standingsForm.filter((_, j) => j !== i))}><Text style={{ color: colors.danger, fontSize: 16 }}>✕</Text></TouchableOpacity> : <View style={{ width: 24 }} />}
             </View>
           ))}
           <View style={{ flexDirection: "row", gap: 8, marginTop: 10, alignItems: "center" }}>
-            <View style={{ flex: 1 }}>
-              <FormInput label="" value={newTeamName} onChangeText={setNewTeamName} placeholder="Add a team..." />
-            </View>
-            <TouchableOpacity onPress={() => { if (newTeamName.trim()) { setStandingsForm([...standingsForm, { team: newTeamName.trim(), w: 0, d: 0, l: 0, gf: 0, ga: 0 }]); setNewTeamName(""); } }}
-              style={s.editSmallBtn}><Text style={s.editSmallText}>+ Add</Text></TouchableOpacity>
+            <View style={{ flex: 1 }}><FormInput label="" value={newTeamName} onChangeText={setNewTeamName} placeholder="Add a team..." /></View>
+            <TouchableOpacity onPress={() => { if (newTeamName.trim()) { setStandingsForm([...standingsForm, { team: newTeamName.trim(), w: 0, d: 0, l: 0, gf: 0, ga: 0 }]); setNewTeamName(""); } }} style={s.editSmallBtn}><Text style={s.editSmallText}>+ Add</Text></TouchableOpacity>
           </View>
           <FormButtons onCancel={() => setEditingStandings(false)} onSave={handleSaveStandings} saving={saving} saveLabel="Save Standings" />
         </FormModal>
@@ -142,7 +133,11 @@ export function SeasonsScreen() {
   // ─── Season List ────────────────────────────────────────────────
   return (
     <ScrollView style={s.container}>
-      <Text style={s.header}>SEASONS</Text>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <Text style={s.header}>SEASONS</Text>
+        {isAdmin && <TouchableOpacity onPress={() => setShowAddSeason(true)} style={s.addBtn}><Text style={s.addBtnText}>+ Add Season</Text></TouchableOpacity>}
+      </View>
+
       {seasons.map(season => {
         const sg = games.filter(g => g.seasonId === season.id);
         const sp = sg.filter(g => g.ourScore != null);
@@ -171,7 +166,34 @@ export function SeasonsScreen() {
           </TouchableOpacity>
         );
       })}
-      {seasons.length === 0 && <Card><Text style={{ color: colors.textDim, textAlign: "center" }}>No seasons yet.</Text></Card>}
+      {seasons.length === 0 && <Card><Text style={{ color: colors.textDim, textAlign: "center" }}>No seasons yet. Tap + to create your first season.</Text></Card>}
+
+      {/* Add Season Modal */}
+      <FormModal visible={showAddSeason} title="Add Season" onClose={() => setShowAddSeason(false)}>
+        <FormInput label="Season Name" value={seasonForm.name} onChangeText={v => setSeasonForm({ ...seasonForm, name: v })} placeholder="e.g. Spring 2026" />
+        <FormInput label="Team Name" value={seasonForm.teamName} onChangeText={v => setSeasonForm({ ...seasonForm, teamName: v })} placeholder="Your team's name this season" />
+        <FormInput label="Division" value={seasonForm.division} onChangeText={v => setSeasonForm({ ...seasonForm, division: v })} placeholder="e.g. Division 2 Boarded" />
+        <View style={{ flexDirection: "row", gap: 12 }}>
+          <View style={{ flex: 1 }}><FormInput label="Start Date" value={seasonForm.startDate} onChangeText={v => setSeasonForm({ ...seasonForm, startDate: v })} placeholder="YYYY-MM-DD" /></View>
+          <View style={{ flex: 1 }}><FormInput label="End Date" value={seasonForm.endDate} onChangeText={v => setSeasonForm({ ...seasonForm, endDate: v })} placeholder="YYYY-MM-DD" /></View>
+        </View>
+        <FormPicker label="Status" value={seasonForm.status} onSelect={v => setSeasonForm({ ...seasonForm, status: v })} options={[{ value: "Active", label: "Active" }, { value: "Completed", label: "Completed" }]} />
+
+        <Text style={s.formSection}>OTHER TEAMS IN LEAGUE</Text>
+        <Text style={{ fontSize: 12, color: colors.textDim, marginBottom: 8 }}>Add the other teams in your division. Standings start at 0-0-0.</Text>
+        {newLeagueTeams.map((t, i) => (
+          <View key={i} style={{ flexDirection: "row", gap: 8, marginBottom: 6, alignItems: "center" }}>
+            <View style={{ flex: 1 }}>
+              <FormInput label="" value={t} onChangeText={v => { const u = [...newLeagueTeams]; u[i] = v; setNewLeagueTeams(u); }} placeholder={`Team ${i + 1}`} />
+            </View>
+            {newLeagueTeams.length > 1 && <TouchableOpacity onPress={() => setNewLeagueTeams(newLeagueTeams.filter((_, j) => j !== i))}><Text style={{ color: colors.danger, fontSize: 18 }}>✕</Text></TouchableOpacity>}
+          </View>
+        ))}
+        <TouchableOpacity onPress={() => setNewLeagueTeams([...newLeagueTeams, ""])} style={s.addRowBtn}><Text style={s.addRowText}>+ Add team</Text></TouchableOpacity>
+
+        <FormButtons onCancel={() => setShowAddSeason(false)} onSave={handleAddSeason} saving={saving} saveLabel="Create Season" />
+      </FormModal>
+
       <View style={{ height: 40 }} />
     </ScrollView>
   );
@@ -180,6 +202,8 @@ export function SeasonsScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, padding: spacing.md },
   header: { fontSize: 15, fontWeight: "700", color: colors.textMuted, letterSpacing: 1.5, marginBottom: spacing.md, marginTop: spacing.md },
+  addBtn: { backgroundColor: colors.accent, paddingHorizontal: 14, paddingVertical: 8, borderRadius: radii.md },
+  addBtnText: { color: colors.bg, fontSize: 13, fontWeight: "700" },
   backBtn: { paddingVertical: 8, marginBottom: 4 },
   backText: { color: colors.textMuted, fontSize: 13, fontWeight: "500" },
   detailName: { fontSize: 22, fontWeight: "700", color: colors.text },
@@ -190,8 +214,9 @@ const s = StyleSheet.create({
   mono: { fontFamily: "monospace", fontWeight: "600" },
   editSmallBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border },
   editSmallText: { color: colors.textMuted, fontSize: 12, fontWeight: "600" },
-  resultBadge: { width: 30, height: 30, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  resultText: { fontWeight: "700", fontSize: 12, fontFamily: "monospace" },
+  formSection: { fontSize: 11, color: colors.textDim, fontWeight: "600", letterSpacing: 1, marginTop: 16, marginBottom: 8 },
+  addRowBtn: { padding: 8, borderWidth: 1, borderStyle: "dashed", borderColor: colors.border, borderRadius: 8, alignItems: "center", marginBottom: 8 },
+  addRowText: { color: colors.textMuted, fontSize: 12 },
   standingsHeader: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 8 },
   standingsCol: { fontSize: 11, fontWeight: "600", color: colors.textDim, letterSpacing: 0.5, textAlign: "center" },
   standingsRow: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 6 },
