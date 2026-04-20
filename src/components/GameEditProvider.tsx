@@ -6,7 +6,7 @@ import { useGames, usePlayers, useSeasons } from "../hooks/useFirestore";
 import { createGame, updateGame, deleteGame } from "../services/firestore";
 import { formatDate, getResult, getResultColor } from "../services/utils";
 import { Badge, StatBox } from "../components/SharedUI";
-import { FormModal, FormInput, FormButtons, NumInput } from "../components/FormComponents";
+import { FormModal, FormInput, FormDateInput, FormTimeInput, FormButtons, NumInput } from "../components/FormComponents";
 import type { Game } from "../types";
 
 // ─── Form Types ───────────────────────────────────────────────────
@@ -199,8 +199,8 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
 
       {/* ─── Add/Edit Game Form ───────────────────────────────── */}
       <FormModal visible={showForm} title={editingGame ? "Edit Game" : "Add Game"} onClose={() => setShowForm(false)}>
-        <FormInput label="Date" value={form.date} onChangeText={v => setForm({ ...form, date: v })} placeholder="YYYY-MM-DD" />
-        <FormInput label="Time" value={form.time} onChangeText={v => setForm({ ...form, time: v })} placeholder="e.g. 8:30 PM" />
+        <FormDateInput label="Date" value={form.date} onChangeText={v => setForm({ ...form, date: v })} />
+        <FormTimeInput label="Time" value={form.time} onChangeText={v => setForm({ ...form, time: v })} />
         <FormInput label="Opponent" value={form.opponent} onChangeText={v => setForm({ ...form, opponent: v })} placeholder="e.g. Ballhogs" />
         <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-end" }}>
           <View style={{ flex: 1 }}><FormInput label="Our Score" value={form.ourScore} onChangeText={v => setForm({ ...form, ourScore: v })} placeholder="—" keyboardType="numeric" /></View>
