@@ -28,7 +28,7 @@ export function FormInput({ label, value, onChangeText, placeholder, keyboardTyp
 }) {
   return (
     <View style={{ marginBottom: 14 }}>
-      <Text style={s.label}>{label}</Text>
+      {label ? <Text style={s.label}>{label}</Text> : null}
       <TextInput
         style={[s.input, multiline && { height: 80, textAlignVertical: "top" }]}
         value={value}
@@ -40,6 +40,80 @@ export function FormInput({ label, value, onChangeText, placeholder, keyboardTyp
       />
     </View>
   );
+}
+
+// ─── Date Input (native picker on web/mobile) ────────────────────
+export function FormDateInput({ label, value, onChangeText }: {
+  label: string; value: string; onChangeText: (v: string) => void;
+}) {
+  if (Platform.OS === "web") {
+    return (
+      <View style={{ marginBottom: 14 }}>
+        <Text style={s.label}>{label}</Text>
+        <input
+          type="date"
+          value={value}
+          onChange={(e: any) => onChangeText(e.target.value)}
+          style={{
+            width: "100%", padding: 12, borderRadius: 12,
+            border: `1px solid ${colors.border}`, backgroundColor: colors.bg,
+            color: colors.text, fontSize: 14, fontFamily: "system-ui, sans-serif",
+            outline: "none", boxSizing: "border-box" as any,
+            colorScheme: "dark",
+          }}
+        />
+      </View>
+    );
+  }
+  return <FormInput label={label} value={value} onChangeText={onChangeText} placeholder="YYYY-MM-DD" />;
+}
+
+// ─── Time Input (native picker on web/mobile) ────────────────────
+export function FormTimeInput({ label, value, onChangeText }: {
+  label: string; value: string; onChangeText: (v: string) => void;
+}) {
+  const toHtml = (v: string): string => {
+    if (!v) return "";
+    if (/^\d{2}:\d{2}$/.test(v)) return v;
+    const match = v.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (!match) return "";
+    let h = parseInt(match[1]);
+    const m = match[2];
+    const ampm = match[3].toUpperCase();
+    if (ampm === "PM" && h !== 12) h += 12;
+    if (ampm === "AM" && h === 12) h = 0;
+    return `${String(h).padStart(2, "0")}:${m}`;
+  };
+  const fromHtml = (v: string): string => {
+    if (!v) return "";
+    const [hStr, mStr] = v.split(":");
+    let h = parseInt(hStr);
+    const ampm = h >= 12 ? "PM" : "AM";
+    if (h > 12) h -= 12;
+    if (h === 0) h = 12;
+    return `${h}:${mStr} ${ampm}`;
+  };
+
+  if (Platform.OS === "web") {
+    return (
+      <View style={{ marginBottom: 14 }}>
+        <Text style={s.label}>{label}</Text>
+        <input
+          type="time"
+          value={toHtml(value)}
+          onChange={(e: any) => onChangeText(fromHtml(e.target.value))}
+          style={{
+            width: "100%", padding: 12, borderRadius: 12,
+            border: `1px solid ${colors.border}`, backgroundColor: colors.bg,
+            color: colors.text, fontSize: 14, fontFamily: "system-ui, sans-serif",
+            outline: "none", boxSizing: "border-box" as any,
+            colorScheme: "dark",
+          }}
+        />
+      </View>
+    );
+  }
+  return <FormInput label={label} value={value} onChangeText={onChangeText} placeholder="e.g. 8:00 PM" />;
 }
 
 // ─── Form Picker (simple dropdown alternative) ────────────────────
