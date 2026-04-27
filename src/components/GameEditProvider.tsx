@@ -14,18 +14,16 @@ interface GameForm {
   date: string; time: string; opponent: string; ourScore: string; theirScore: string; notes: string;
   keeperAppearances: { playerId: string; minutes: string; goalsAgainst: string; saves: string }[];
   scorers: { playerId: string; goals: string }[];
-  assists: { playerId: string; count: string }[];
   absentPlayerIds: string[];
 }
 
-const emptyForm = (): GameForm => ({ date: "", time: "", opponent: "", ourScore: "", theirScore: "", notes: "", keeperAppearances: [], scorers: [], assists: [], absentPlayerIds: [] });
+const emptyForm = (): GameForm => ({ date: "", time: "", opponent: "", ourScore: "", theirScore: "", notes: "", keeperAppearances: [], scorers: [], absentPlayerIds: [] });
 
 const gameToForm = (g: Game): GameForm => ({
   date: g.date, time: g.time || "", opponent: g.opponent, notes: g.notes || "",
   ourScore: g.ourScore != null ? String(g.ourScore) : "", theirScore: g.theirScore != null ? String(g.theirScore) : "",
   keeperAppearances: g.keeperAppearances.map(ka => ({ playerId: ka.playerId, minutes: String(ka.minutes), goalsAgainst: String(ka.goalsAgainst), saves: String(ka.saves) })),
   scorers: g.scorers.map(s => ({ playerId: s.playerId, goals: String(s.goals) })),
-  assists: g.assists.map(a => ({ playerId: a.playerId, count: String(a.count) })),
   absentPlayerIds: g.absentPlayerIds || [],
 });
 
@@ -86,7 +84,6 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
         ourScore: form.ourScore !== "" ? parseInt(form.ourScore) : null,
         theirScore: form.theirScore !== "" ? parseInt(form.theirScore) : null,
         scorers: form.scorers.filter(s => s.playerId).map(s => ({ playerId: s.playerId, goals: parseInt(s.goals) || 1 })),
-        assists: form.assists.filter(a => a.playerId).map(a => ({ playerId: a.playerId, count: parseInt(a.count) || 1 })),
         keeperAppearances: form.keeperAppearances.filter(k => k.playerId).map(k => ({ playerId: k.playerId, minutes: parseInt(k.minutes) || 0, goalsAgainst: parseInt(k.goalsAgainst) || 0, saves: parseInt(k.saves) || 0 })),
         absentPlayerIds: form.absentPlayerIds,
       };
@@ -124,12 +121,6 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
             <View style={{ marginTop: 16 }}>
               <Text style={st.modalLabel}>GOALS</Text>
               <Text style={{ color: colors.text, fontSize: 14 }}>⚽ {selectedGame.scorers.map(sc => { const p = players.find(pl => pl.id === sc.playerId); return `${p?.name || "Unknown"}${sc.goals > 1 ? ` (${sc.goals})` : ""}`; }).join(", ")}</Text>
-            </View>
-          )}
-          {selectedGame.assists.length > 0 && (
-            <View style={{ marginTop: 12 }}>
-              <Text style={st.modalLabel}>ASSISTS</Text>
-              <Text style={{ color: colors.text, fontSize: 14 }}>👟 {selectedGame.assists.map(a => { const p = players.find(pl => pl.id === a.playerId); return `${p?.name || "Unknown"}${a.count > 1 ? ` (${a.count})` : ""}`; }).join(", ")}</Text>
             </View>
           )}
           {selectedGame.keeperAppearances.length > 0 && (
@@ -235,38 +226,6 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
                 <Text style={[st.gridBtnNumber, gc > 0 && st.gridBtnNumberActive]}>{p.number}</Text>
                 <Text style={[st.gridBtnName, gc > 0 && st.gridBtnNameActive]} numberOfLines={1}>{p.name.split(" ")[0]}</Text>
                 {gc > 0 && <View style={st.goalBadge}><Text style={st.goalBadgeText}>{gc}</Text></View>}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* Assists Grid */}
-        <Text style={st.formSection}>ASSISTS</Text>
-        {form.assists.length > 0 && (
-          <View style={{ marginBottom: 10 }}>
-            {form.assists.map((a, i) => {
-              const p = players.find(pl => pl.id === a.playerId);
-              return (
-                <View key={i} style={st.scorerSummaryRow}>
-                  <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>👟 {p?.name || "Unknown"} <Text style={{ color: colors.blue, fontWeight: "700", fontFamily: "monospace" }}>×{a.count}</Text></Text>
-                  <TouchableOpacity onPress={() => setForm({ ...form, assists: form.assists.filter((_, j) => j !== i) })} style={{ padding: 4 }}><Text style={{ color: colors.danger, fontSize: 16 }}>✕</Text></TouchableOpacity>
-                </View>
-              );
-            })}
-          </View>
-        )}
-        <View style={st.playerGrid}>
-          {players.filter(p => p.active !== false).map(p => {
-            const existing = form.assists.find(a => a.playerId === p.id);
-            const c = existing ? parseInt(existing.count) || 0 : 0;
-            return (
-              <TouchableOpacity key={p.id} onPress={() => {
-                let na; if (existing) na = form.assists.map(a => a.playerId === p.id ? { ...a, count: String((parseInt(a.count) || 0) + 1) } : a); else na = [...form.assists, { playerId: p.id, count: "1" }];
-                setForm({ ...form, assists: na });
-              }} style={[st.gridBtn, c > 0 && st.gridBtnAssistActive]} activeOpacity={0.6}>
-                <Text style={[st.gridBtnNumber, c > 0 && { color: colors.blue }]}>{p.number}</Text>
-                <Text style={[st.gridBtnName, c > 0 && { color: colors.blue }]} numberOfLines={1}>{p.name.split(" ")[0]}</Text>
-                {c > 0 && <View style={[st.goalBadge, { backgroundColor: colors.blue }]}><Text style={st.goalBadgeText}>{c}</Text></View>}
               </TouchableOpacity>
             );
           })}
