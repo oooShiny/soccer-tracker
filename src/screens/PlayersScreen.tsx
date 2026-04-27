@@ -75,7 +75,6 @@ export function PlayersScreen() {
         <Text style={[s.colText, { flex: 1 }]}>Player</Text>
         <Text style={[s.colText, s.numCol]}>Pos</Text>
         <Text style={[s.colText, s.numCol]}>G</Text>
-        <Text style={[s.colText, s.numCol]}>A</Text>
         <Text style={[s.colText, s.numCol]}>GP</Text>
       </View>
 
@@ -87,7 +86,6 @@ export function PlayersScreen() {
               <Text style={[s.playerName, { flex: 1 }]}>{p.name}</Text>
               <View style={s.numCol}><Badge color={colors.textMuted} bg={colors.bg}>{p.positions[0]?.slice(0, 3) || "—"}</Badge></View>
               <Text style={[s.mono, s.numCol, { color: colors.accent, fontWeight: "700" }]}>{p.goals}</Text>
-              <Text style={[s.mono, s.numCol, { color: colors.blue, fontWeight: "700" }]}>{p.assists}</Text>
               <Text style={[s.mono, s.numCol, { color: colors.textMuted }]}>{p.gamesPlayed}</Text>
             </View>
           </Card>
@@ -113,7 +111,7 @@ export function PlayersScreen() {
                   <Text style={[s.mono, { width: 36, color: colors.textMuted }]}>{p.number}</Text>
                   <View style={{ flex: 1 }}>
                     <Text style={s.playerName}>{p.name}</Text>
-                    {(p.goals > 0 || p.assists > 0) && <Text style={s.dualNote}>Also: {p.goals > 0 ? `${p.goals}G` : ""}{p.goals > 0 && p.assists > 0 ? " " : ""}{p.assists > 0 ? `${p.assists}A` : ""} in field</Text>}
+                    {p.goals > 0 && <Text style={s.dualNote}>Also: {p.goals}G in field</Text>}
                   </View>
                   <Text style={[s.mono, s.numCol, { color: colors.danger, fontWeight: "700" }]}>{p.keeperStats!.goalsAgainst}</Text>
                   <Text style={[s.mono, s.numCol, { color: colors.accent, fontWeight: "700" }]}>{p.keeperStats!.saves}</Text>
@@ -151,19 +149,17 @@ export function PlayersScreen() {
             {selectedPlayer.positions.map(pos => <Badge key={pos} color={colors.textMuted} bg={colors.bg}>{pos}</Badge>)}
             {selectedPlayer.canPlayKeeper && !selectedPlayer.positions.includes("Goalkeeper") && <Badge color={colors.purple} bg={colors.purpleDim}>Can keep</Badge>}
           </View>
-          {(selectedPlayer.goals > 0 || selectedPlayer.assists > 0 || !selectedPlayer.keeperStats) && (
+          {(selectedPlayer.goals > 0 || !selectedPlayer.keeperStats) && (
             <View style={{ marginBottom: selectedPlayer.keeperStats ? 20 : 0 }}>
               {selectedPlayer.keeperStats && <Text style={s.modalLabel}>FIELD STATS</Text>}
               <View style={{ flexDirection: "row", justifyContent: "space-around", marginBottom: 8 }}>
                 <StatBox label="Goals" value={selectedPlayer.goals} color={colors.accent} />
-                <StatBox label="Assists" value={selectedPlayer.assists} color={colors.blue} />
-                <StatBox label="G+A" value={selectedPlayer.goals + selectedPlayer.assists} color={colors.purple} />
               </View>
             </View>
           )}
           {selectedPlayer.keeperStats && (
             <View>
-              {(selectedPlayer.goals > 0 || selectedPlayer.assists > 0) && <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 16 }} />}
+              {selectedPlayer.goals > 0 && <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 16 }} />}
               <Text style={s.modalLabel}>KEEPER STATS</Text>
               <View style={{ flexDirection: "row", justifyContent: "space-around", marginBottom: 8 }}>
                 <StatBox label="GA" value={selectedPlayer.keeperStats.goalsAgainst} color={colors.danger} />
