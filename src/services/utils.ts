@@ -52,6 +52,45 @@ export const formatDateLong = (dateStr: string): string =>
     year: "numeric",
   });
 
+// ─── Time Normalization ───────────────────────────────────────────
+// Converts any time format to canonical "H:MM AM/PM" format
+export const normalizeTime = (time: string): string => {
+  if (!time || !time.trim()) return "";
+  const t = time.trim();
+
+  // Already canonical: "8:00 PM"
+  const match12 = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm|Am|Pm)$/);
+  if (match12) {
+    let h = parseInt(match12[1]);
+    const m = match12[2];
+    const ampm = match12[3].toUpperCase();
+    // Normalize 12h to consistent format
+    return `${h}:${m} ${ampm}`;
+  }
+
+  // 24h format: "20:00" or "20:30"
+  const match24 = t.match(/^(\d{1,2}):(\d{2})$/);
+  if (match24) {
+    let h = parseInt(match24[1]);
+    const m = match24[2];
+    const ampm = h >= 12 ? "PM" : "AM";
+    if (h > 12) h -= 12;
+    if (h === 0) h = 12;
+    return `${h}:${m} ${ampm}`;
+  }
+
+  // No-space variant: "8:00PM"
+  const matchNoSpace = t.match(/^(\d{1,2}):(\d{2})(AM|PM|am|pm)$/i);
+  if (matchNoSpace) {
+    const h = parseInt(matchNoSpace[1]);
+    const m = matchNoSpace[2];
+    const ampm = matchNoSpace[3].toUpperCase();
+    return `${h}:${m} ${ampm}`;
+  }
+
+  return t; // return as-is if we can't parse
+};
+
 // ─── Season Stats ─────────────────────────────────────────────────
 export const computeSeasonRecord = (games: Game[]) => {
   const played = games.filter((g) => g.ourScore != null);

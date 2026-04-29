@@ -4,8 +4,9 @@ import {
   subscribeToGames,
   subscribeToPlayers,
   subscribeToMembers,
+  subscribeToOpponents,
 } from "../services/firestore";
-import type { Season, Game, Player, TeamMember } from "../types";
+import type { Season, Game, Player, TeamMember, Opponent } from "../types";
 
 // ─── Generic Firestore Subscription Hook ──────────────────────────
 function useFirestoreSubscription<T>(
@@ -49,3 +50,6 @@ export const useMembers = (teamId: string | null) =>
     teamId,
     subscribeToMembers
   );
+
+export const useOpponents = (teamId: string | null) =>
+  useFirestoreSubscription<Opponent>(teamId, subscribeToOpponents);

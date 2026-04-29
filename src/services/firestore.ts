@@ -297,3 +297,42 @@ export const findInviteByEmail = async (
   const d = snap.docs[0];
   return { id: d.id, ...d.data(), createdAt: (d.data().createdAt as Timestamp)?.toDate() } as Invite;
 };
+
+// ─── Opponents ────────────────────────────────────────────────────
+import type { Opponent } from "../types";
+
+const opponentsRef = (teamId: string) => collection(db, "teams", teamId, "opponents");
+
+export const subscribeToOpponents = (
+  teamId: string,
+  callback: (opponents: Opponent[]) => void
+): Unsubscribe => {
+  const q = query(opponentsRef(teamId), orderBy("name", "asc"));
+  return onSnapshot(q, (snap) => {
+    const opponents = snap.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+      createdAt: (d.data().createdAt as Timestamp)?.toDate(),
+    })) as Opponent[];
+    callback(opponents);
+  });
+};
+
+export const createOpponent = async (teamId: string, name: string) => {
+  return addDoc(opponentsRef(teamId), {
+    name: name.trim(),
+    createdAt: serverTimestamp(),
+  });
+};
+
+export const findOrCreateOpponent = async (teamId: string, name: string): Promise<string> => {
+  const trimmed = name.trim();
+  // Check if opponent already exists (case-insensitive)
+  const q = query(opponentsRef(teamId));
+  const snap = await getDocs(q);
+  const existing = snap.docs.find(d => d.data().name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) return existing.id;
+  // Create new
+  const ref = await addDoc(opponentsRef(teamId), { name: trimmed, createdAt: serverTimestamp() });
+  return ref.id;
+};

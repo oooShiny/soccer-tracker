@@ -1,13 +1,13 @@
 import React, { createContext, useContext, useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput } from "react-native";
 import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
-import { useGames, usePlayers, useSeasons } from "../hooks/useFirestore";
-import { createGame, updateGame, deleteGame } from "../services/firestore";
-import { formatDate, getResult, getResultColor } from "../services/utils";
+import { useGames, usePlayers, useSeasons, useOpponents } from "../hooks/useFirestore";
+import { createGame, updateGame, deleteGame, findOrCreateOpponent } from "../services/firestore";
+import { formatDate, getResult, getResultColor, normalizeTime } from "../services/utils";
 import { Badge, StatBox } from "../components/SharedUI";
 import { FormModal, FormInput, FormDateInput, FormTimeInput, FormButtons, NumInput } from "../components/FormComponents";
-import type { Game, GoalEvent, GameScorer } from "../types";
+import type { Game, GoalEvent, GameScorer, Opponent } from "../types";
 
 // ─── Form Types ───────────────────────────────────────────────────
 interface KAForm { playerId: string; minutes: string; saves: string; }
@@ -100,6 +100,7 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
   const { data: allGames } = useGames(teamId);
   const { data: players } = usePlayers(teamId);
   const { data: seasons } = useSeasons(teamId);
+  const { data: opponents } = useOpponents(teamId);
 
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
@@ -120,9 +121,16 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
   // Current keeper from appearances (first one for simplicity, or could track active)
   const currentKeeperId = form.keeperAppearances.length > 0 ? form.keeperAppearances[0].playerId : null;
 
-  // Opponent history
-  const getOpponentGames = (opp: string) => allGames.filter(g => g.opponent.toLowerCase() === opp.toLowerCase() && g.ourScore != null).sort((a, b) => b.date.localeCompare(a.date));
-  const opponentGames = opponentHistory ? getOpponentGames(opponentHistory) : [];
+  // Opponent history — match by opponentId if available, fall back to name
+  const [historyOpponentId, setHistoryOpponentId] = useState<string | null>(null);
+  const getOpponentGames = (oppName: string, oppId?: string) => {
+    return allGames.filter(g => {
+      if (g.ourScore == null) return false;
+      if (oppId && g.opponentId) return g.opponentId === oppId;
+      return g.opponent.toLowerCase() === oppName.toLowerCase();
+    }).sort((a, b) => b.date.localeCompare(a.date));
+  };
+  const opponentGames = opponentHistory ? getOpponentGames(opponentHistory, historyOpponentId || undefined) : [];
   const opponentRecord = opponentGames.reduce((a, g) => { if (g.ourScore! > g.theirScore!) a.w++; else if (g.ourScore! < g.theirScore!) a.l++; else a.d++; a.gf += g.ourScore!; a.ga += g.theirScore!; return a; }, { w: 0, d: 0, l: 0, gf: 0, ga: 0 });
 
   // Timeline helpers
@@ -147,8 +155,10 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
     setSaving(true);
     try {
       const gaMap = timelineKeeperGA(form.goalTimeline);
+      const normalizedTime = normalizeTime(form.time);
+      const opponentId = form.opponent.trim() ? await findOrCreateOpponent(teamId, form.opponent) : undefined;
       const data = {
-        seasonId: formSeasonId, date: form.date, time: form.time, opponent: form.opponent, notes: form.notes,
+        seasonId: formSeasonId, date: form.date, time: normalizedTime, opponent: form.opponent.trim(), opponentId, notes: form.notes,
         ourScore: scores.ourScore || null, theirScore: scores.theirScore || null,
         goalTimeline: form.goalTimeline,
         scorers: timelineToScorers(form.goalTimeline),
@@ -393,7 +403,7 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
               </View>
             </View>
           ) : null}
-          <TouchableOpacity onPress={() => { setSelectedGame(null); setOpponentHistory(selectedGame.opponent); }} style={st.historyBtn}>
+          <TouchableOpacity onPress={() => { setSelectedGame(null); setHistoryOpponentId(selectedGame.opponentId || null); setOpponentHistory(selectedGame.opponent); }} style={st.historyBtn}>
             <Text style={st.historyBtnText}>📊 History vs {selectedGame.opponent}</Text>
           </TouchableOpacity>
           {canEdit && <TouchableOpacity onPress={() => editGame(selectedGame)} style={st.editBtn}><Text style={st.editBtnText}>✏️ Edit Game</Text></TouchableOpacity>}
@@ -438,6 +448,21 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
         <FormDateInput label="Date" value={form.date} onChangeText={v => setForm({ ...form, date: v })} />
         <FormTimeInput label="Time" value={form.time} onChangeText={v => setForm({ ...form, time: v })} />
         <FormInput label="Opponent" value={form.opponent} onChangeText={v => setForm({ ...form, opponent: v })} placeholder="e.g. Ballhogs" />
+        {/* Quick-select from known opponents */}
+        {opponents.length > 0 && (
+          <View style={{ marginTop: -8, marginBottom: 14 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={{ flexDirection: "row", gap: 4 }}>
+                {opponents.filter(o => !form.opponent || o.name.toLowerCase().includes(form.opponent.toLowerCase())).map(o => (
+                  <TouchableOpacity key={o.id} onPress={() => setForm({ ...form, opponent: o.name })}
+                    style={[st.playerChip, form.opponent === o.name && st.playerChipActive]}>
+                    <Text style={[st.playerChipText, form.opponent === o.name && st.playerChipTextActive]}>{o.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        )}
 
         {/* Keepers (set up first so goals against can be attributed) */}
         <Text style={st.formSection}>KEEPERS</Text>
