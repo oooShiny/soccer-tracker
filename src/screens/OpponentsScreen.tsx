@@ -69,7 +69,14 @@ export function OpponentsScreen() {
     return { opponent: { id: `legacy-${name}`, name, createdAt: new Date() }, games, w, d, l, gf, ga };
   }).filter(r => r.games.length > 0);
 
-  const allRecords = [...records, ...legacyRecords].sort((a, b) => (b.w + b.d + b.l) - (a.w + a.d + a.l));
+  const allRecords = [...records, ...legacyRecords].sort((a, b) => {
+    const aTotal = a.w + a.d + a.l;
+    const bTotal = b.w + b.d + b.l;
+    const aPct = aTotal > 0 ? a.w / aTotal : 0;
+    const bPct = bTotal > 0 ? b.w / bTotal : 0;
+    if (bPct !== aPct) return bPct - aPct;
+    return bTotal - aTotal; // tiebreak by games played
+  });
 
   // Totals
   const totalW = allRecords.reduce((s, r) => s + r.w, 0);
