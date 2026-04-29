@@ -5,6 +5,7 @@ import { useAuth } from "../hooks/useAuth";
 import { usePlayers, useSeasons } from "../hooks/useFirestore";
 import { createPlayer, updatePlayer } from "../services/firestore";
 import { Card, Badge, StatBox } from "../components/SharedUI";
+import { useGameEdit } from "../components/GameEditProvider";
 import { FormModal, FormInput, FormPicker, FormCheckbox, FormButtons } from "../components/FormComponents";
 import type { Player } from "../types";
 
@@ -26,6 +27,7 @@ export function PlayersScreen() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<PlayerForm>(emptyForm());
   const [saving, setSaving] = useState(false);
+  const { viewPlayer } = useGameEdit();
 
   const activeSeason = seasons.find(s => s.status === "Active");
   const fieldOnly = players.filter(p => !p.keeperStats && !isInactiveForSeason(p, activeSeason?.id));
@@ -202,6 +204,9 @@ export function PlayersScreen() {
             </View>
           )}
 
+          <TouchableOpacity onPress={() => { setSelectedPlayer(null); viewPlayer(selectedPlayer.id); }} style={s.statsBtn}>
+            <Text style={s.statsBtnText}>📊 View Full Stats</Text>
+          </TouchableOpacity>
           {canEdit && (
             <TouchableOpacity onPress={() => openEdit(selectedPlayer)} style={s.editBtn}><Text style={s.editBtnText}>✏️ Edit Player</Text></TouchableOpacity>
           )}
@@ -238,8 +243,10 @@ const s = StyleSheet.create({
   mono: { fontFamily: "monospace", fontSize: 13 },
   dualNote: { fontSize: 11, color: colors.textDim, marginTop: 1 },
   modalLabel: { fontSize: 11, color: colors.textDim, fontWeight: "600", letterSpacing: 1, marginBottom: 10 },
-  editBtn: { backgroundColor: colors.blueDim, padding: 12, borderRadius: radii.md, alignItems: "center" as const, marginTop: 16 },
+  editBtn: { backgroundColor: colors.blueDim, padding: 12, borderRadius: radii.md, alignItems: "center" as const, marginTop: 8 },
   editBtnText: { color: colors.blue, fontWeight: "600", fontSize: 14 },
+  statsBtn: { backgroundColor: colors.purpleDim, padding: 12, borderRadius: radii.md, alignItems: "center" as const, marginTop: 16 },
+  statsBtnText: { color: colors.purple, fontWeight: "600", fontSize: 14 },
   statusToggle: { padding: 14, borderRadius: radii.md, alignItems: "center" as const, borderWidth: 1 },
   statusActive: { backgroundColor: colors.accentDim, borderColor: colors.accent },
   statusInactive: { backgroundColor: colors.dangerDim, borderColor: colors.danger },

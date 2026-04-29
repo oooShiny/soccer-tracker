@@ -53,6 +53,13 @@ export interface GameAssist {
   count: number;
 }
 
+export interface GoalEvent {
+  type: "for" | "against";
+  playerId?: string;  // scorer (for "for" goals)
+  keeperId?: string;  // keeper who conceded (for "against" goals)
+  order: number;      // 1-indexed sequence
+}
+
 export interface Game {
   id: string;
   seasonId: string;
@@ -61,13 +68,14 @@ export interface Game {
   opponent: string;
   ourScore: number | null;
   theirScore: number | null;
-  scorers: GameScorer[];
-  assists: GameAssist[];
+  scorers: GameScorer[];       // legacy / computed from goalTimeline
+  assists: GameAssist[];       // legacy
+  goalTimeline: GoalEvent[];   // ordered goal events
   keeperAppearances: KeeperAppearance[];
-  absentPlayerIds: string[]; // players who missed this game
-  notes: string; // post-game recap
+  absentPlayerIds: string[];
+  notes: string;
   createdAt: Date;
-  updatedBy: string; // uid
+  updatedBy: string;
 }
 
 export interface KeeperStats {
