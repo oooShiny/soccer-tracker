@@ -66,6 +66,7 @@ export interface Game {
   date: string; // ISO date
   time: string; // e.g. "8:30 PM" or ""
   opponent: string;
+  opponentId?: string;        // references opponents collection
   ourScore: number | null;
   theirScore: number | null;
   scorers: GameScorer[];       // legacy / computed from goalTimeline
@@ -102,6 +103,12 @@ export interface Player {
 
 // ─── Computed / UI Types ──────────────────────────────────────────
 export type GameResult = "W" | "D" | "L" | "Upcoming";
+
+export interface Opponent {
+  id: string;
+  name: string;
+  createdAt: Date;
+}
 
 export interface SeasonWithGames extends Season {
   games: Game[];

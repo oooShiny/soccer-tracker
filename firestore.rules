@@ -52,6 +52,13 @@ service cloud.firestore {
         allow delete: if isAdmin(teamId);
       }
 
+      // ─── Opponents ─────────────────────────────────────────
+      match /opponents/{opponentId} {
+        allow read: if isMember(teamId);
+        allow create, update: if isEditor(teamId);
+        allow delete: if isAdmin(teamId);
+      }
+
       // ─── Members ────────────────────────────────────────────
       match /members/{uid} {
         allow read: if isMember(teamId);
