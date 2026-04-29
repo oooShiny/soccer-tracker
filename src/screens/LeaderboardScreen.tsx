@@ -4,6 +4,7 @@ import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
 import { useSeasons, useGames, usePlayers } from "../hooks/useFirestore";
 import { Card, Badge } from "../components/SharedUI";
+import { useGameEdit } from "../components/GameEditProvider";
 import type { Game, Player } from "../types";
 
 interface LeaderboardEntry {
@@ -55,6 +56,7 @@ export function LeaderboardScreen() {
   const { data: seasons } = useSeasons(teamId);
   const { data: allGames } = useGames(teamId);
   const { data: players } = usePlayers(teamId);
+  const { viewPlayer } = useGameEdit();
   const [scope, setScope] = useState<"season" | "alltime">("season");
 
   const activeSeason = seasons.find(s => s.status === "Active");
@@ -82,12 +84,12 @@ export function LeaderboardScreen() {
       {goalLeaders.length >= 1 && (
         <View style={s.podium}>
           {goalLeaders.slice(0, 3).map((entry, i) => (
-            <View key={entry.playerId} style={[s.podiumItem, i === 0 && s.podiumFirst]}>
+            <TouchableOpacity key={entry.playerId} onPress={() => viewPlayer(entry.playerId)} activeOpacity={0.7} style={[s.podiumItem, i === 0 && s.podiumFirst]}>
               <Text style={[s.medal, { color: medalColors[i] }]}>{i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"}</Text>
               <Text style={s.podiumGoals}>{entry.goals}</Text>
               <Text style={s.podiumName} numberOfLines={1}>{entry.name.split(" ")[0]}</Text>
               <Text style={s.podiumSub}>{entry.perGame.toFixed(1)}/game</Text>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
       )}
@@ -101,18 +103,20 @@ export function LeaderboardScreen() {
         <Text style={[s.tableCol, s.numCol]}>G/GP</Text>
       </View>
       {goalLeaders.map((entry, i) => (
-        <Card key={entry.playerId} style={{ padding: 12, paddingHorizontal: 16 }}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={[s.mono, { width: 32, color: i < 3 ? medalColors[i] : colors.textMuted, fontWeight: "700" }]}>{i + 1}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={s.entryName}>{entry.name}</Text>
-              <Text style={s.entryNum}>#{entry.number}</Text>
+        <TouchableOpacity key={entry.playerId} onPress={() => viewPlayer(entry.playerId)} activeOpacity={0.7}>
+          <Card style={{ padding: 12, paddingHorizontal: 16 }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Text style={[s.mono, { width: 32, color: i < 3 ? medalColors[i] : colors.textMuted, fontWeight: "700" }]}>{i + 1}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.entryName, { color: colors.blue }]}>{entry.name}</Text>
+                <Text style={s.entryNum}>#{entry.number}</Text>
+              </View>
+              <Text style={[s.mono, s.numCol, { color: colors.accent, fontWeight: "700" }]}>{entry.goals}</Text>
+              <Text style={[s.mono, s.numCol, { color: colors.textMuted }]}>{entry.games}</Text>
+              <Text style={[s.mono, s.numCol, { color: colors.textDim }]}>{entry.perGame.toFixed(1)}</Text>
             </View>
-            <Text style={[s.mono, s.numCol, { color: colors.accent, fontWeight: "700" }]}>{entry.goals}</Text>
-            <Text style={[s.mono, s.numCol, { color: colors.textMuted }]}>{entry.games}</Text>
-            <Text style={[s.mono, s.numCol, { color: colors.textDim }]}>{entry.perGame.toFixed(1)}</Text>
-          </View>
-        </Card>
+          </Card>
+        </TouchableOpacity>
       ))}
       {goalLeaders.length === 0 && <Card><Text style={{ color: colors.textDim, textAlign: "center" }}>No goals recorded yet.</Text></Card>}
 
