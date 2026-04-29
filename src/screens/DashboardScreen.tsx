@@ -6,9 +6,11 @@ import { useSeasons, useGames, usePlayers } from "../hooks/useFirestore";
 import { computeSeasonRecord, getRecentForm, getOurPosition, positionSuffix, formatDate } from "../services/utils";
 import { Card, StatBox, SectionHeader, StandingsTable, Badge } from "../components/SharedUI";
 import { GameCard } from "../components/GameCard";
+import { useGameEdit } from "../components/GameEditProvider";
 
 export default function DashboardScreen() {
   const { teamId } = useAuth();
+  const { viewPlayer } = useGameEdit();
   const { data: seasons } = useSeasons(teamId);
   const { data: games } = useGames(teamId);
   const { data: players } = usePlayers(teamId);
@@ -98,11 +100,11 @@ export default function DashboardScreen() {
             <SectionHeader>TOP SCORERS</SectionHeader>
             <Card>
               {topScorers.map((entry, i) => (
-                <View key={entry.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 6, borderBottomWidth: i < topScorers.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+                <TouchableOpacity key={entry.id} onPress={() => viewPlayer(entry.id)} activeOpacity={0.7} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 6, borderBottomWidth: i < topScorers.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
                   <Text style={{ width: 28, fontFamily: "monospace", fontWeight: "700", fontSize: 14, color: i === 0 ? "#FFD700" : i === 1 ? "#C0C0C0" : i === 2 ? "#CD7F32" : colors.textDim }}>{i + 1}</Text>
-                  <Text style={{ flex: 1, fontWeight: "600", fontSize: 14, color: colors.text }}>{entry.name}</Text>
+                  <Text style={{ flex: 1, fontWeight: "600", fontSize: 14, color: colors.blue }}>{entry.name}</Text>
                   <Text style={{ fontFamily: "monospace", fontWeight: "700", fontSize: 16, color: colors.accent }}>{entry.goals}</Text>
-                </View>
+                </TouchableOpacity>
               ))}
             </Card>
           </>
