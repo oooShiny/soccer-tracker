@@ -36,7 +36,7 @@ function computeRecords(opponents: Opponent[], allGames: Game[]): OpponentRecord
     const gf = games.reduce((s, g) => s + (g.ourScore || 0), 0);
     const ga = games.reduce((s, g) => s + (g.theirScore || 0), 0);
     const total = w + d + l;
-    records.push({ id: opp.id, name: opp.name, games, w, d, l, gf, ga, total, winPct: total > 0 ? w / total : 0 });
+    records.push({ id: opp.id, name: opp.name, games, w, d, l, gf, ga, total, winPct: total > 0 ? (w + 0.5 * d) / total : 0 });
   }
 
   // Legacy (not in opponents collection)
@@ -56,7 +56,7 @@ function computeRecords(opponents: Opponent[], allGames: Game[]): OpponentRecord
     const gf = games.reduce((s, g) => s + (g.ourScore || 0), 0);
     const ga = games.reduce((s, g) => s + (g.theirScore || 0), 0);
     const total = w + d + l;
-    records.push({ id: `legacy-${name}`, name, games, w, d, l, gf, ga, total, winPct: total > 0 ? w / total : 0 });
+    records.push({ id: `legacy-${name}`, name, games, w, d, l, gf, ga, total, winPct: total > 0 ? (w + 0.5 * d) / total : 0 });
   }
 
   return records;
@@ -128,13 +128,13 @@ export function OpponentsScreen() {
           <SortHeader label="GF" k="gf" width={36} />
           <SortHeader label="GA" k="ga" width={36} />
           <SortHeader label="GP" k="total" width={36} />
-          <SortHeader label="Win%" k="winPct" width={48} />
+          <SortHeader label="PCT" k="winPct" width={48} />
         </View>
 
         {/* Data rows */}
         {sorted.map((r, i) => {
           const isExpanded = expandedId === r.id;
-          const pctColor = r.winPct >= 0.6 ? colors.accent : r.winPct >= 0.4 ? colors.warn : colors.danger;
+          const pctColor = r.winPct >= 0.600 ? colors.accent : r.winPct >= 0.400 ? colors.warn : colors.danger;
           return (
             <View key={r.id}>
               <TouchableOpacity
@@ -151,7 +151,7 @@ export function OpponentsScreen() {
                 <Text style={[st.cell, st.numCell, { width: 36 }]}>{r.gf}</Text>
                 <Text style={[st.cell, st.numCell, { width: 36 }]}>{r.ga}</Text>
                 <Text style={[st.cell, st.numCell, { width: 36, color: colors.textMuted }]}>{r.total}</Text>
-                <Text style={[st.cell, st.numCell, { width: 48, color: pctColor, fontWeight: "700" }]}>{Math.round(r.winPct * 100)}%</Text>
+                <Text style={[st.cell, st.numCell, { width: 48, color: pctColor, fontWeight: "700" }]}>{r.winPct.toFixed(3)}</Text>
               </TouchableOpacity>
 
               {/* Expanded game list */}
