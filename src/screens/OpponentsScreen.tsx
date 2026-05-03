@@ -12,7 +12,7 @@ interface OpponentRecord {
   name: string;
   games: Game[];
   w: number; d: number; l: number;
-  gf: number; ga: number;
+  gf: number; ga: number; gd: number;
   total: number;
   winPct: number;
 }
@@ -36,7 +36,7 @@ function computeRecords(opponents: Opponent[], allGames: Game[]): OpponentRecord
     const gf = games.reduce((s, g) => s + (g.ourScore || 0), 0);
     const ga = games.reduce((s, g) => s + (g.theirScore || 0), 0);
     const total = w + d + l;
-    records.push({ id: opp.id, name: opp.name, games, w, d, l, gf, ga, total, winPct: total > 0 ? (w + 0.5 * d) / total : 0 });
+    records.push({ id: opp.id, name: opp.name, games, w, d, l, gf, ga, gd: gf - ga, total, winPct: total > 0 ? (w + 0.5 * d) / total : 0 });
   }
 
   // Legacy (not in opponents collection)
@@ -56,13 +56,13 @@ function computeRecords(opponents: Opponent[], allGames: Game[]): OpponentRecord
     const gf = games.reduce((s, g) => s + (g.ourScore || 0), 0);
     const ga = games.reduce((s, g) => s + (g.theirScore || 0), 0);
     const total = w + d + l;
-    records.push({ id: `legacy-${name}`, name, games, w, d, l, gf, ga, total, winPct: total > 0 ? (w + 0.5 * d) / total : 0 });
+    records.push({ id: `legacy-${name}`, name, games, w, d, l, gf, ga, gd: gf - ga, total, winPct: total > 0 ? (w + 0.5 * d) / total : 0 });
   }
 
   return records;
 }
 
-type SortKey = "name" | "w" | "l" | "d" | "gf" | "ga" | "total" | "winPct";
+type SortKey = "name" | "w" | "l" | "d" | "gf" | "ga" | "gd" | "total" | "winPct";
 
 export function OpponentsScreen() {
   const { teamId } = useAuth();
@@ -80,7 +80,8 @@ export function OpponentsScreen() {
     if (sortKey === "name") cmp = a.name.localeCompare(b.name);
     else cmp = (a[sortKey] as number) - (b[sortKey] as number);
     if (!sortAsc) cmp = -cmp;
-    if (cmp === 0) cmp = b.total - a.total; // tiebreak
+    if (cmp === 0) cmp = (b.gd) - (a.gd); // tiebreak by goal differential
+    if (cmp === 0) cmp = b.total - a.total; // then by games played
     return cmp;
   });
 
@@ -127,6 +128,7 @@ export function OpponentsScreen() {
           <SortHeader label="T" k="d" width={36} />
           <SortHeader label="GF" k="gf" width={36} />
           <SortHeader label="GA" k="ga" width={36} />
+          <SortHeader label="GD" k="gd" width={36} />
           <SortHeader label="GP" k="total" width={36} />
           <SortHeader label="PCT" k="winPct" width={48} />
         </View>
@@ -150,6 +152,7 @@ export function OpponentsScreen() {
                 <Text style={[st.cell, st.numCell, { width: 36, color: colors.warn }]}>{r.d}</Text>
                 <Text style={[st.cell, st.numCell, { width: 36 }]}>{r.gf}</Text>
                 <Text style={[st.cell, st.numCell, { width: 36 }]}>{r.ga}</Text>
+                <Text style={[st.cell, st.numCell, { width: 36, color: r.gd > 0 ? colors.accent : r.gd < 0 ? colors.danger : colors.textMuted }]}>{r.gd > 0 ? `+${r.gd}` : r.gd}</Text>
                 <Text style={[st.cell, st.numCell, { width: 36, color: colors.textMuted }]}>{r.total}</Text>
                 <Text style={[st.cell, st.numCell, { width: 48, color: pctColor, fontWeight: "700" }]}>{r.winPct.toFixed(3)}</Text>
               </TouchableOpacity>
