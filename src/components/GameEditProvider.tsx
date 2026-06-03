@@ -10,20 +10,26 @@ import { FormModal, FormInput, FormDateInput, FormTimeInput, FormButtons, NumInp
 import type { Game, GoalEvent, GameScorer, Opponent } from "../types";
 
 // ─── Form Types ───────────────────────────────────────────────────
-interface KAForm { playerId: string; minutes: string; saves: string; }
+interface KAForm { playerId: string; pct: string; saves: string; }
 interface GameForm {
   date: string; time: string; opponent: string; notes: string;
+  isPlayoff: boolean;
   goalTimeline: GoalEvent[];
   keeperAppearances: KAForm[];
   absentPlayerIds: string[];
 }
 
-const emptyForm = (): GameForm => ({ date: "", time: "", opponent: "", notes: "", goalTimeline: [], keeperAppearances: [], absentPlayerIds: [] });
+const emptyForm = (): GameForm => ({ date: "", time: "", opponent: "", notes: "", isPlayoff: false, goalTimeline: [], keeperAppearances: [], absentPlayerIds: [] });
 
 const gameToForm = (g: Game): GameForm => ({
   date: g.date, time: g.time || "", opponent: g.opponent, notes: g.notes || "",
+  isPlayoff: g.isPlayoff || false,
   goalTimeline: g.goalTimeline || migrateToTimeline(g),
-  keeperAppearances: g.keeperAppearances.map(ka => ({ playerId: ka.playerId, minutes: String(ka.minutes), saves: String(ka.saves) })),
+  keeperAppearances: g.keeperAppearances.map(ka => ({
+    playerId: ka.playerId,
+    pct: String(ka.pct != null ? ka.pct : ka.minutes ? Math.round((ka.minutes / 90) * 100) : 100),
+    saves: String(ka.saves),
+  })),
   absentPlayerIds: g.absentPlayerIds || [],
 });
 
@@ -159,12 +165,15 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
       const opponentId = form.opponent.trim() ? await findOrCreateOpponent(teamId, form.opponent) : undefined;
       const data = {
         seasonId: formSeasonId, date: form.date, time: normalizedTime, opponent: form.opponent.trim(), opponentId, notes: form.notes,
+        isPlayoff: form.isPlayoff,
         ourScore: scores.ourScore || null, theirScore: scores.theirScore || null,
         goalTimeline: form.goalTimeline,
         scorers: timelineToScorers(form.goalTimeline),
         assists: [],
         keeperAppearances: form.keeperAppearances.filter(k => k.playerId).map(k => ({
-          playerId: k.playerId, minutes: parseInt(k.minutes) || 0,
+          playerId: k.playerId,
+          pct: parseInt(k.pct) || 100,
+          minutes: 0, // kept for compat
           goalsAgainst: gaMap[k.playerId] || 0, saves: parseInt(k.saves) || 0,
         })),
         absentPlayerIds: form.absentPlayerIds,
@@ -346,6 +355,7 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
         <FormModal visible={true} title={`vs ${selectedGame.opponent}`} onClose={() => setSelectedGame(null)}>
           <Text style={{ textAlign: "center", color: colors.textMuted, fontSize: 12, marginBottom: 4 }}>
             {formatDate(selectedGame.date)}{selectedGame.time ? ` • ${selectedGame.time}` : ""}
+            {selectedGame.isPlayoff ? "  🏆 Playoff" : ""}
           </Text>
           {selectedGame.ourScore != null && (
             <Text style={[st.modalScore, { color: getResultColor(getResult(selectedGame)) }]}>{selectedGame.ourScore} – {selectedGame.theirScore}</Text>
@@ -385,7 +395,7 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
               <Text style={st.modalLabel}>GOALKEEPER{selectedGame.keeperAppearances.length > 1 ? "S" : ""}</Text>
               {selectedGame.keeperAppearances.map((ka, i) => {
                 const k = players.find(p => p.id === ka.playerId);
-                return (<View key={i} style={st.keeperRow}><Text style={{ color: colors.text, fontSize: 14 }}>🧤 {k?.name || "Unknown"} <Text style={{ color: colors.textMuted }}>{ka.minutes}'</Text></Text><View style={{ flexDirection: "row", gap: 12 }}><Text style={{ color: colors.danger, fontSize: 12 }}>{ka.goalsAgainst} GA</Text><Text style={{ color: colors.accent, fontSize: 12 }}>{ka.saves} Svs</Text></View></View>);
+                return (<View key={i} style={st.keeperRow}><Text style={{ color: colors.text, fontSize: 14 }}>🧤 {k?.name || "Unknown"} <Text style={{ color: colors.textMuted }}>{ka.pct != null ? `${ka.pct}%` : `${ka.minutes}'`}</Text></Text><View style={{ flexDirection: "row", gap: 12 }}><Text style={{ color: colors.danger, fontSize: 12 }}>{ka.goalsAgainst} GA</Text><Text style={{ color: colors.accent, fontSize: 12 }}>{ka.saves} Svs</Text></View></View>);
               })}
             </View>
           )}
@@ -483,12 +493,12 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
               <TouchableOpacity onPress={() => setForm({ ...form, keeperAppearances: form.keeperAppearances.filter((_, j) => j !== i) })}><Text style={{ color: colors.danger, fontSize: 18 }}>✕</Text></TouchableOpacity>
             </View>
             <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-              <View style={{ alignItems: "center" }}><Text style={st.tinyLabel}>Min</Text><NumInput value={ka.minutes} onChangeText={v => { const u = [...form.keeperAppearances]; u[i].minutes = v; setForm({ ...form, keeperAppearances: u }); }} /></View>
+              <View style={{ alignItems: "center" }}><Text style={st.tinyLabel}>% of Game</Text><NumInput value={ka.pct} onChangeText={v => { const u = [...form.keeperAppearances]; u[i].pct = v; setForm({ ...form, keeperAppearances: u }); }} /></View>
               <View style={{ alignItems: "center" }}><Text style={st.tinyLabel}>Saves</Text><NumInput value={ka.saves} onChangeText={v => { const u = [...form.keeperAppearances]; u[i].saves = v; setForm({ ...form, keeperAppearances: u }); }} /></View>
             </View>
           </View>
         ))}
-        <TouchableOpacity onPress={() => setForm({ ...form, keeperAppearances: [...form.keeperAppearances, { playerId: "", minutes: "90", saves: "0" }] })} style={st.addRow}><Text style={st.addRowText}>+ Add keeper</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => setForm({ ...form, keeperAppearances: [...form.keeperAppearances, { playerId: "", pct: "100", saves: "0" }] })} style={st.addRow}><Text style={st.addRowText}>+ Add keeper</Text></TouchableOpacity>
 
         {/* ─── Goal Timeline ──────────────────────────────────── */}
         <Text style={st.formSection}>GOAL TIMELINE</Text>
@@ -562,6 +572,26 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
             );
           })}
         </View>
+
+        {/* Playoff checkbox */}
+        <TouchableOpacity
+          onPress={() => setForm({ ...form, isPlayoff: !form.isPlayoff })}
+          style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14, paddingVertical: 4 }}
+          activeOpacity={0.7}
+        >
+          <View style={{
+            width: 22, height: 22, borderRadius: 6, borderWidth: 2,
+            borderColor: form.isPlayoff ? colors.warn : colors.border,
+            backgroundColor: form.isPlayoff ? colors.warnDim : "transparent",
+            alignItems: "center", justifyContent: "center",
+          }}>
+            {form.isPlayoff && <Text style={{ color: colors.warn, fontSize: 12, fontWeight: "800" }}>✓</Text>}
+          </View>
+          <View>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: colors.text }}>Playoff game</Text>
+            <Text style={{ fontSize: 12, color: colors.textDim }}>Mark if this is a playoff or cup game</Text>
+          </View>
+        </TouchableOpacity>
 
         <FormInput label="Notes" value={form.notes} onChangeText={v => setForm({ ...form, notes: v })} placeholder="How did the game go?" multiline />
         {editingGame && canEdit && <TouchableOpacity onPress={handleDelete} style={st.deleteBtn}><Text style={st.deleteBtnText}>Delete Game</Text></TouchableOpacity>}

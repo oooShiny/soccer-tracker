@@ -7,13 +7,12 @@ import { getFirestore } from "firebase/firestore";
 // You can find them in the Firebase Console under:
 // Project Settings > General > Your apps > Web app
 const firebaseConfig = {
-    apiKey: "AIzaSyCnwTdGarshLdsntYxlvelQfw5PPljdy1o",
-    authDomain: "soccer-tracker-1fbce.firebaseapp.com",
-    projectId: "soccer-tracker-1fbce",
-    storageBucket: "soccer-tracker-1fbce.firebasestorage.app",
-    messagingSenderId: "643942888029",
-    appId: "1:643942888029:web:1b784a5f911ca17690d3b4",
-    measurementId: "G-26PEM151KH"
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID",
 };
 
 const app = initializeApp(firebaseConfig);

@@ -38,7 +38,8 @@ export interface Season {
 
 export interface KeeperAppearance {
   playerId: string;
-  minutes: number;
+  minutes: number;       // kept for legacy data
+  pct: number;           // percentage of game played (0–100)
   goalsAgainst: number;
   saves: number;
 }
@@ -74,6 +75,7 @@ export interface Game {
   goalTimeline: GoalEvent[];   // ordered goal events
   keeperAppearances: KeeperAppearance[];
   absentPlayerIds: string[];
+  isPlayoff: boolean;
   notes: string;
   createdAt: Date;
   updatedBy: string;

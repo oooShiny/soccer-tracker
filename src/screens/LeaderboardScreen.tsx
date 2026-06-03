@@ -127,19 +127,21 @@ function computeStreaks(games: Game[], players: Player[]): StreakEntry[] {
     .sort((a, b) => b.longest - a.longest || b.current - a.current);
 }
 
-interface KeeperEntry { playerId: string; name: string; number: number; apps: number; ga: number; gaPer90: number; saves: number; cleanSheets: number; }
+interface KeeperEntry { playerId: string; name: string; number: number; apps: number; ga: number; gaPerApp: number; saves: number; cleanSheets: number; }
 function computeKeeperLeaderboard(games: Game[], players: Player[]): KeeperEntry[] {
-  const keeperMap: Record<string, { apps: number; ga: number; saves: number; minutes: number; cleanSheets: number }> = {};
+  const keeperMap: Record<string, { apps: number; ga: number; saves: number; pctTotal: number; cleanSheets: number }> = {};
 
   for (const game of games) {
     if (game.ourScore == null) continue;
     for (const ka of game.keeperAppearances) {
-      if (!keeperMap[ka.playerId]) keeperMap[ka.playerId] = { apps: 0, ga: 0, saves: 0, minutes: 0, cleanSheets: 0 };
+      if (!keeperMap[ka.playerId]) keeperMap[ka.playerId] = { apps: 0, ga: 0, saves: 0, pctTotal: 0, cleanSheets: 0 };
       keeperMap[ka.playerId].apps++;
       keeperMap[ka.playerId].ga += ka.goalsAgainst;
       keeperMap[ka.playerId].saves += ka.saves;
-      keeperMap[ka.playerId].minutes += ka.minutes;
-      if (ka.goalsAgainst === 0 && ka.minutes >= 45) keeperMap[ka.playerId].cleanSheets++;
+      // Use pct if available, fall back to minutes/90 for legacy data
+      const pct = ka.pct != null ? ka.pct : (ka.minutes ? Math.round((ka.minutes / 90) * 100) : 100);
+      keeperMap[ka.playerId].pctTotal += pct;
+      if (ka.goalsAgainst === 0 && pct >= 45) keeperMap[ka.playerId].cleanSheets++;
     }
   }
 
@@ -147,10 +149,11 @@ function computeKeeperLeaderboard(games: Game[], players: Player[]): KeeperEntry
     const p = players.find(pl => pl.id === id);
     return {
       playerId: id, name: p?.name || "Unknown", number: p?.number || 0,
-      apps: d.apps, ga: d.ga, gaPer90: d.minutes > 0 ? (d.ga / d.minutes) * 90 : 0,
+      apps: d.apps, ga: d.ga,
+      gaPerApp: d.apps > 0 ? d.ga / d.apps : 0,
       saves: d.saves, cleanSheets: d.cleanSheets,
     };
-  }).sort((a, b) => b.cleanSheets - a.cleanSheets || a.gaPer90 - b.gaPer90);
+  }).sort((a, b) => b.cleanSheets - a.cleanSheets || a.gaPerApp - b.gaPerApp);
 }
 
 // ─── Component ────────────────────────────────────────────────────
@@ -332,14 +335,14 @@ export function LeaderboardScreen() {
             <Text style={[st.tableCol, { flex: 1 }]}>Player</Text>
             <Text style={[st.tableCol, st.numCol]}>CS</Text>
             <Text style={[st.tableCol, st.numCol]}>GA</Text>
-            <Text style={[st.tableCol, st.numCol]}>GA/90</Text>
+            <Text style={[st.tableCol, st.numCol]}>GA/G</Text>
             <Text style={[st.tableCol, st.numCol]}>Svs</Text>
           </View>
           {keepers.map((e, i) => (
             <Row key={e.playerId} entry={e} i={i}>
               <Text style={[st.mono, st.numCol, { color: colors.purple, fontWeight: "700" }]}>{e.cleanSheets}</Text>
               <Text style={[st.mono, st.numCol, { color: colors.danger }]}>{e.ga}</Text>
-              <Text style={[st.mono, st.numCol, { color: e.gaPer90 <= 1.5 ? colors.accent : e.gaPer90 <= 2.5 ? colors.warn : colors.danger }]}>{e.gaPer90.toFixed(1)}</Text>
+              <Text style={[st.mono, st.numCol, { color: e.gaPerApp <= 1 ? colors.accent : e.gaPerApp <= 2 ? colors.warn : colors.danger }]}>{e.gaPerApp.toFixed(1)}</Text>
               <Text style={[st.mono, st.numCol, { color: colors.accent }]}>{e.saves}</Text>
             </Row>
           ))}
