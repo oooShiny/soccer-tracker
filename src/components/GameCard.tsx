@@ -28,6 +28,7 @@ export function GameCard({ game }: { game: Game }) {
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
                 <Text style={s.dateText}>{formatDate(game.date)}{game.time ? ` • ${game.time}` : ""}</Text>
                 {multi && <Badge color={colors.purple} bg={colors.purpleDim}>Split GK</Badge>}
+                {game.isPlayoff && <Badge color={colors.warn} bg={colors.warnDim}>🏆 Playoff</Badge>}
               </View>
             </View>
           </View>
