@@ -30,9 +30,10 @@ export function PlayersScreen() {
   const { viewPlayer } = useGameEdit();
 
   const activeSeason = seasons.find(s => s.status === "Active");
-  const fieldOnly = players.filter(p => !p.keeperStats && !isInactiveForSeason(p, activeSeason?.id));
-  const keepers = players.filter(p => p.keeperStats && !isInactiveForSeason(p, activeSeason?.id));
-  const inactivePlayers = players.filter(p => isInactiveForSeason(p, activeSeason?.id));
+  const fieldOnly = players.filter(p => p.active !== false && !p.keeperStats && !isInactiveForSeason(p, activeSeason?.id));
+  const keepers = players.filter(p => p.active !== false && p.keeperStats && !isInactiveForSeason(p, activeSeason?.id));
+  const inactivePlayers = players.filter(p => p.active !== false && isInactiveForSeason(p, activeSeason?.id));
+  const deactivatedPlayers = players.filter(p => p.active === false);
 
   const openNew = () => { setEditingPlayer(null); setForm(emptyForm()); setShowForm(true); };
   const openEdit = (p: Player) => { setEditingPlayer(p); setForm(playerToForm(p)); setShowForm(true); setSelectedPlayer(null); };
@@ -52,7 +53,8 @@ export function PlayersScreen() {
         assists: editingPlayer?.assists ?? 0,
         gamesPlayed: editingPlayer?.gamesPlayed ?? 0,
         keeperStats: editingPlayer?.keeperStats ?? null,
-        active: true,
+        active: editingPlayer?.active ?? true,
+        deactivatedAt: editingPlayer?.deactivatedAt ?? null,
         inactiveSeasonIds: editingPlayer?.inactiveSeasonIds ?? [],
       };
       if (editingPlayer) {
@@ -144,6 +146,24 @@ export function PlayersScreen() {
         </>
       )}
 
+      {/* Deactivated (permanently off the team) */}
+      {deactivatedPlayers.length > 0 && (
+        <>
+          <Text style={[s.header, { marginTop: spacing.lg }]}>DEACTIVATED</Text>
+          {deactivatedPlayers.map(p => (
+            <TouchableOpacity key={p.id} onPress={() => setSelectedPlayer(p)} activeOpacity={0.7}>
+              <Card style={{ padding: 12, paddingHorizontal: 16, opacity: 0.6 }}>
+                <View style={s.playerRow}>
+                  <Text style={[s.mono, { width: 36, color: colors.textDim }]}>{p.number}</Text>
+                  <Text style={{ flex: 1, fontWeight: "600", fontSize: 14, color: colors.textDim }}>{p.name}</Text>
+                  <Badge color={colors.textDim} bg={colors.bg}>Deactivated</Badge>
+                </View>
+              </Card>
+            </TouchableOpacity>
+          ))}
+        </>
+      )}
+
       {/* Player Detail Modal */}
       {selectedPlayer && (
         <FormModal visible={true} title={`#${selectedPlayer.number} ${selectedPlayer.name}`} onClose={() => setSelectedPlayer(null)}>
@@ -197,6 +217,37 @@ export function PlayersScreen() {
                     </Text>
                     <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 2 }}>
                       Tap to {inactive ? "reactivate" : "mark inactive"}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })()}
+            </View>
+          )}
+
+          {/* Permanent team status toggle */}
+          {canEdit && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={s.modalLabel}>TEAM STATUS</Text>
+              {(() => {
+                const deactivated = selectedPlayer.active === false;
+                return (
+                  <TouchableOpacity
+                    onPress={async () => {
+                      if (!teamId) return;
+                      const updates = deactivated
+                        ? { active: true, deactivatedAt: null }
+                        : { active: false, deactivatedAt: new Date().toISOString().slice(0, 10) };
+                      await updatePlayer(teamId, selectedPlayer.id, updates as any);
+                      setSelectedPlayer({ ...selectedPlayer, ...updates });
+                    }}
+                    style={[s.statusToggle, deactivated ? s.statusInactive : s.statusActive]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ color: deactivated ? colors.danger : colors.accent, fontWeight: "600", fontSize: 14 }}>
+                      {deactivated ? "🚫 Deactivated" : "✅ Active"}
+                    </Text>
+                    <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 2 }}>
+                      Tap to {deactivated ? "reactivate" : "deactivate"} — hides from game rosters going forward
                     </Text>
                   </TouchableOpacity>
                 );

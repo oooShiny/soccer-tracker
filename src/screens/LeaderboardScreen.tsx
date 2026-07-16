@@ -4,7 +4,7 @@ import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
 import { useSeasons, useGames, usePlayers } from "../hooks/useFirestore";
 import { formatDate } from "../services/utils";
-import { Card } from "../components/SharedUI";
+import { Card, Badge } from "../components/SharedUI";
 import { useGameEdit } from "../components/GameEditProvider";
 import type { Game, Player } from "../types";
 
@@ -174,6 +174,8 @@ export function LeaderboardScreen() {
   const streaks = useMemo(() => computeStreaks(scopeGames, players), [scopeGames, players]);
   const keepers = useMemo(() => computeKeeperLeaderboard(scopeGames, players), [scopeGames, players]);
 
+  const isDeactivated = (playerId: string) => scope === "alltime" && players.find(p => p.id === playerId)?.active === false;
+
   const Podium = ({ entries, valueKey, valueSuffix }: { entries: { playerId: string; name: string; [k: string]: any }[]; valueKey: string; valueSuffix?: string }) => (
     entries.length > 0 ? (
       <View style={st.podium}>
@@ -183,6 +185,7 @@ export function LeaderboardScreen() {
             <Text style={st.podiumValue}>{typeof e[valueKey] === "number" && e[valueKey] % 1 !== 0 ? e[valueKey].toFixed(2) : e[valueKey]}</Text>
             <Text style={st.podiumName} numberOfLines={1}>{e.name.split(" ")[0]}</Text>
             {valueSuffix && <Text style={st.podiumSub}>{valueSuffix}</Text>}
+            {isDeactivated(e.playerId) && <View style={{ marginTop: 4 }}><Badge color={colors.textDim} bg={colors.bg}>Deactivated</Badge></View>}
           </TouchableOpacity>
         ))}
       </View>
@@ -195,7 +198,10 @@ export function LeaderboardScreen() {
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <Text style={[st.mono, { width: 28, color: i < 3 ? MEDALS[i] : colors.textDim, fontWeight: "700" }]}>{i + 1}</Text>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontWeight: "600", fontSize: 14, color: colors.blue }}>{entry.name}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={{ fontWeight: "600", fontSize: 14, color: colors.blue }}>{entry.name}</Text>
+              {isDeactivated(entry.playerId) && <Badge color={colors.textDim} bg={colors.bg}>Deactivated</Badge>}
+            </View>
             <Text style={{ fontSize: 11, color: colors.textDim }}>#{entry.number}</Text>
           </View>
           {children}

@@ -8,7 +8,7 @@ import { GamesScreen } from "../screens/GamesScreen";
 import { PlayersScreen } from "../screens/PlayersScreen";
 import { LeaderboardScreen } from "../screens/LeaderboardScreen";
 import { SeasonsScreen } from "../screens/SeasonsScreen";
-import { OpponentsScreen } from "../screens/OpponentsScreen";
+import { HistoryScreen } from "../screens/HistoryScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 
 const Tab = createBottomTabNavigator();
@@ -48,7 +48,7 @@ export default function AppNavigator() {
 
 // "More" tab houses Players and Settings
 function MoreNavigator() {
-  const [screen, setScreen] = React.useState<"menu" | "players" | "opponents" | "settings">("menu");
+  const [screen, setScreen] = React.useState<"menu" | "players" | "history" | "settings">("menu");
   const { View, TouchableOpacity, Text: RNText, StyleSheet } = require("react-native");
 
   if (screen === "players") return (
@@ -59,12 +59,12 @@ function MoreNavigator() {
       <PlayersScreen />
     </View>
   );
-  if (screen === "opponents") return (
+  if (screen === "history") return (
     <View style={{ flex: 1 }}>
       <TouchableOpacity onPress={() => setScreen("menu")} style={{ padding: 16, paddingBottom: 4 }}>
         <RNText style={{ color: colors.textMuted, fontSize: 13 }}>← Back</RNText>
       </TouchableOpacity>
-      <OpponentsScreen />
+      <HistoryScreen />
     </View>
   );
   if (screen === "settings") return (
@@ -81,7 +81,7 @@ function MoreNavigator() {
       <RNText style={{ fontSize: 15, fontWeight: "700", color: colors.textMuted, letterSpacing: 1.5, marginBottom: 16 }}>MORE</RNText>
       {[
         { key: "players", icon: "👥", label: "Players", sub: "Roster & player stats" },
-        { key: "opponents", icon: "⚔️", label: "Opponents", sub: "Head-to-head records" },
+        { key: "history", icon: "📜", label: "History", sub: "Team record, attendance & opponents" },
         { key: "settings", icon: "⚙️", label: "Settings", sub: "Team, members & account" },
       ].map(item => (
         <TouchableOpacity key={item.key} onPress={() => setScreen(item.key as any)}

@@ -100,6 +100,7 @@ export interface Player {
   gamesPlayed: number;
   keeperStats: KeeperStats | null;
   active: boolean;
+  deactivatedAt: string | null; // ISO date set when `active` is toggled off; cleared on reactivation
   inactiveSeasonIds: string[]; // seasons where this player is inactive
 }
 

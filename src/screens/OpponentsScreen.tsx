@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
 import { useGames, useOpponents, useSeasons } from "../hooks/useFirestore";
@@ -64,7 +64,7 @@ function computeRecords(opponents: Opponent[], allGames: Game[]): OpponentRecord
 
 type SortKey = "name" | "w" | "l" | "d" | "gf" | "ga" | "gd" | "total" | "winPct";
 
-export function OpponentsScreen() {
+export function OpponentsSection() {
   const { teamId } = useAuth();
   const { data: opponents } = useOpponents(teamId);
   const { data: allGames } = useGames(teamId);
@@ -103,7 +103,7 @@ export function OpponentsScreen() {
   );
 
   return (
-    <ScrollView style={st.container}>
+    <View style={st.container}>
       <Text style={st.header}>OPPONENTS</Text>
 
       {records.length > 0 && (
@@ -188,15 +188,13 @@ export function OpponentsScreen() {
       {records.length === 0 && (
         <Card><Text style={{ color: colors.textDim, textAlign: "center" }}>No opponent data yet. Play some games!</Text></Card>
       )}
-
-      <View style={{ height: 40 }} />
-    </ScrollView>
+    </View>
   );
 }
 
 const st = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: spacing.md },
-  header: { fontSize: 15, fontWeight: "700", color: colors.textMuted, letterSpacing: 1.5, marginBottom: spacing.md, marginTop: spacing.md },
+  container: {},
+  header: { fontSize: 15, fontWeight: "700", color: colors.textMuted, letterSpacing: 1.5, marginBottom: spacing.md, marginTop: spacing.lg },
   table: { borderRadius: radii.md, overflow: "hidden", borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, marginBottom: spacing.md },
   headerRow: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.bg },
   headerCell: { paddingVertical: 10, paddingHorizontal: 6, justifyContent: "center" },

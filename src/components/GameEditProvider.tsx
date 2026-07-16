@@ -4,7 +4,7 @@ import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
 import { useGames, usePlayers, useSeasons, useOpponents } from "../hooks/useFirestore";
 import { createGame, updateGame, deleteGame, findOrCreateOpponent } from "../services/firestore";
-import { formatDate, getResult, getResultColor, normalizeTime } from "../services/utils";
+import { formatDate, getResult, getResultColor, normalizeTime, isPlayerAvailableForGame } from "../services/utils";
 import { Badge, StatBox } from "../components/SharedUI";
 import { FormModal, FormInput, FormDateInput, FormTimeInput, FormButtons, NumInput } from "../components/FormComponents";
 import type { Game, GoalEvent, GameScorer, Opponent } from "../types";
@@ -117,7 +117,7 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
   const [formSeasonId, setFormSeasonId] = useState<string | null>(null);
   const [playerProfileId, setPlayerProfileId] = useState<string | null>(null);
 
-  const keeperEligible = players.filter(p => p.canPlayKeeper);
+  const keeperEligible = players.filter(p => p.canPlayKeeper && isPlayerAvailableForGame(p, form.date));
 
   const viewGame = (game: Game) => setSelectedGame(game);
   const editGame = (game: Game) => { setEditingGame(game); setForm(gameToForm(game)); setFormSeasonId(game.seasonId); setShowForm(true); setSelectedGame(null); };
@@ -545,7 +545,7 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
         {/* Player grid for goals for */}
         <Text style={{ fontSize: 12, color: colors.textDim, marginTop: 8, marginBottom: 8 }}>Tap a player for a goal scored:</Text>
         <View style={st.playerGrid}>
-          {players.filter(p => p.active !== false).map(p => {
+          {players.filter(p => isPlayerAvailableForGame(p, form.date)).map(p => {
             const gc = form.goalTimeline.filter(e => e.type === "for" && e.playerId === p.id).length;
             return (
               <TouchableOpacity key={p.id} onPress={() => addGoalFor(p.id)} style={[st.gridBtn, gc > 0 && st.gridBtnActive]} activeOpacity={0.6}>
@@ -560,7 +560,7 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
         {/* Absent */}
         <Text style={st.formSection}>WHO'S MISSING?</Text>
         <View style={st.playerGrid}>
-          {players.filter(p => p.active !== false).map(p => {
+          {players.filter(p => isPlayerAvailableForGame(p, form.date)).map(p => {
             const isAbsent = form.absentPlayerIds.includes(p.id);
             return (
               <TouchableOpacity key={p.id} onPress={() => setForm({ ...form, absentPlayerIds: isAbsent ? form.absentPlayerIds.filter(id => id !== p.id) : [...form.absentPlayerIds, p.id] })}

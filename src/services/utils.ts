@@ -1,4 +1,4 @@
-import type { StandingsRow, Game, GameResult } from "../types";
+import type { StandingsRow, Game, GameResult, Player } from "../types";
 
 // ─── Standings ────────────────────────────────────────────────────
 export const calcPoints = (row: StandingsRow): number => row.w * 3 + row.d;
@@ -89,6 +89,28 @@ export const normalizeTime = (time: string): string => {
   }
 
   return t; // return as-is if we can't parse
+};
+
+// Buckets a game time into a time-of-day category for reporting
+export const getTimeOfDayBucket = (time: string): "Morning" | "Afternoon" | "Evening" | "Unknown" => {
+  const normalized = normalizeTime(time);
+  const match = normalized.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/);
+  if (!match) return "Unknown";
+  let h = parseInt(match[1]);
+  const period = match[3];
+  if (period === "AM") { if (h === 12) h = 0; } else { if (h !== 12) h += 12; }
+  if (h < 12) return "Morning";
+  if (h < 17) return "Afternoon";
+  return "Evening";
+};
+
+// ─── Player Availability ──────────────────────────────────────────
+// Date-aware roster filter: a deactivated player is only hidden from games
+// dated after their deactivation, so past games can still be corrected.
+export const isPlayerAvailableForGame = (player: Player, gameDate: string): boolean => {
+  if (player.active !== false) return true;
+  if (!player.deactivatedAt) return false;
+  return gameDate < player.deactivatedAt;
 };
 
 // ─── Season Stats ─────────────────────────────────────────────────
