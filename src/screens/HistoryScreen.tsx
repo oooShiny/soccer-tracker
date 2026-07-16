@@ -9,7 +9,7 @@ import { OpponentsSection } from "./OpponentsScreen";
 import type { Game, Player } from "../types";
 
 // ─── Team Record: game-time breakdown ──────────────────────────────
-interface TimeBreakdownRow { time: string; w: number; d: number; l: number; total: number }
+interface TimeBreakdownRow { time: string; w: number; d: number; l: number; gf: number; ga: number; total: number }
 
 // Minutes-since-midnight for chronological sorting; blank/unparseable times sort last
 function timeSortKey(time: string): number {
@@ -27,9 +27,11 @@ function computeTimeBreakdown(games: Game[]): TimeBreakdownRow[] {
   const map: Record<string, TimeBreakdownRow> = {};
   for (const g of played) {
     const time = normalizeTime(g.time) || "No time set";
-    if (!map[time]) map[time] = { time, w: 0, d: 0, l: 0, total: 0 };
+    if (!map[time]) map[time] = { time, w: 0, d: 0, l: 0, gf: 0, ga: 0, total: 0 };
     const row = map[time];
     row.total++;
+    row.gf += g.ourScore || 0;
+    row.ga += g.theirScore || 0;
     if (g.ourScore! > g.theirScore!) row.w++;
     else if (g.ourScore! < g.theirScore!) row.l++;
     else row.d++;
@@ -132,12 +134,20 @@ export function HistoryScreen() {
     </TouchableOpacity>
   );
 
+  // Static (non-sortable) header cell — keeps the same padding as SortHeader so every
+  // table's header row lines up and looks consistent, whether sortable or not.
+  const HeaderLabel = ({ label, width, flex, align, divider }: { label: string; width?: number; flex?: number; align?: "left" | "center"; divider?: boolean }) => (
+    <View style={[st.headerCell, divider && st.impactDivider, width ? { width } : {}, flex ? { flex } : {}]}>
+      <Text style={[st.headerText, align === "left" && { textAlign: "left" }]}>{label}</Text>
+    </View>
+  );
+
   return (
     <ScrollView style={st.container}>
       <Text style={st.header}>HISTORY</Text>
 
-      {/* ─── Team Record ─────────────────────────────────────── */}
-      <Text style={st.sectionHeader}>TEAM RECORD</Text>
+      {/* ─── Time ─────────────────────────────────────────────── */}
+      <Text style={st.majorHeader}>TIME</Text>
       <Card>
         <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
           <StatBox label="W" value={record.w} color={colors.accent} />
@@ -152,33 +162,41 @@ export function HistoryScreen() {
       </Card>
 
       {timeBreakdown.length > 0 && (
-        <View style={st.table}>
-          <View style={st.headerRow}>
-            <Text style={[st.headerText, { flex: 1, textAlign: "left" }]}>Game Time</Text>
-            <Text style={[st.headerText, st.numCol]}>W</Text>
-            <Text style={[st.headerText, st.numCol]}>D</Text>
-            <Text style={[st.headerText, st.numCol]}>L</Text>
-            <Text style={[st.headerText, st.numCol]}>GP</Text>
-            <Text style={[st.headerText, { width: 52 }]}>PCT</Text>
+        <>
+          <Text style={st.sectionHeader}>Game Time</Text>
+          <View style={st.table}>
+            <View style={st.headerRow}>
+              <HeaderLabel label="Game Time" flex={1} align="left" />
+              <HeaderLabel label="W" width={32} />
+              <HeaderLabel label="D" width={32} />
+              <HeaderLabel label="L" width={32} />
+              <HeaderLabel label="GF" width={36} />
+              <HeaderLabel label="GA" width={36} />
+              <HeaderLabel label="GP" width={36} />
+              <HeaderLabel label="PCT" width={52} />
+            </View>
+            {timeBreakdown.map((row, i) => {
+              const pct = row.total > 0 ? (row.w + 0.5 * row.d) / row.total : 0;
+              return (
+                <View key={row.time} style={[st.row, i % 2 === 1 && { backgroundColor: "rgba(255,255,255,0.015)" }]}>
+                  <Text style={[st.nameText, { flex: 1 }]}>{row.time}</Text>
+                  <Text style={[st.numCell, { width: 32, color: colors.accent }]}>{row.w}</Text>
+                  <Text style={[st.numCell, { width: 32, color: colors.warn }]}>{row.d}</Text>
+                  <Text style={[st.numCell, { width: 32, color: colors.danger }]}>{row.l}</Text>
+                  <Text style={[st.numCell, { width: 36 }]}>{row.gf}</Text>
+                  <Text style={[st.numCell, { width: 36 }]}>{row.ga}</Text>
+                  <Text style={[st.numCell, { width: 36, color: colors.textMuted }]}>{row.total}</Text>
+                  <Text style={[st.numCell, { width: 52, fontWeight: "700" }]}>{pct.toFixed(3)}</Text>
+                </View>
+              );
+            })}
           </View>
-          {timeBreakdown.map((row, i) => {
-            const pct = row.total > 0 ? (row.w + 0.5 * row.d) / row.total : 0;
-            return (
-              <View key={row.time} style={[st.row, i % 2 === 1 && { backgroundColor: "rgba(255,255,255,0.015)" }]}>
-                <Text style={[st.nameText, { flex: 1 }]}>{row.time}</Text>
-                <Text style={[st.numCell, st.numCol, { color: colors.accent }]}>{row.w}</Text>
-                <Text style={[st.numCell, st.numCol, { color: colors.warn }]}>{row.d}</Text>
-                <Text style={[st.numCell, st.numCol, { color: colors.danger }]}>{row.l}</Text>
-                <Text style={[st.numCell, st.numCol, { color: colors.textMuted }]}>{row.total}</Text>
-                <Text style={[st.numCell, { width: 52, fontWeight: "700" }]}>{pct.toFixed(3)}</Text>
-              </View>
-            );
-          })}
-        </View>
+        </>
       )}
 
-      {/* ─── Attendance ───────────────────────────────────────── */}
-      <Text style={[st.sectionHeader, { marginTop: spacing.lg }]}>ATTENDANCE</Text>
+      {/* ─── Players ──────────────────────────────────────────── */}
+      <Text style={st.majorHeader}>PLAYERS</Text>
+      <Text style={st.sectionHeader}>Attendance</Text>
       <View style={st.table}>
         <View style={st.headerRow}>
           <SortHeader label="Player" k="name" flex={1} />
@@ -206,44 +224,46 @@ export function HistoryScreen() {
 
       {impact.length > 0 && (
         <>
-          <Text style={[st.sectionHeader, { marginTop: spacing.lg }]}>ATTENDANCE VS WIN %</Text>
+          <Text style={[st.sectionHeader, { marginTop: spacing.lg }]}>Attendance vs Win %</Text>
           <Text style={{ fontSize: 11, color: colors.textDim, marginBottom: spacing.sm }}>How the team performs with vs. without each player.</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator style={st.table}>
-            <View>
-              <View style={st.headerRow}>
-                <Text style={[st.headerText, { width: 120, textAlign: "left" }]}>Player</Text>
-                <Text style={[st.headerText, { width: 36 }]}>GP</Text>
-                <Text style={[st.headerText, st.impactCol]}>W</Text>
-                <Text style={[st.headerText, st.impactCol]}>L</Text>
-                <Text style={[st.headerText, st.impactCol]}>T</Text>
-                <Text style={[st.headerText, { width: 52 }]}>PCT</Text>
-                <Text style={[st.headerText, { width: 46 }]}>GD</Text>
-                <Text style={[st.headerText, st.impactDivider, { width: 60 }]}>Missed</Text>
-                <Text style={[st.headerText, st.impactCol]}>W</Text>
-                <Text style={[st.headerText, st.impactCol]}>L</Text>
-                <Text style={[st.headerText, st.impactCol]}>T</Text>
-                <Text style={[st.headerText, { width: 52 }]}>PCT</Text>
-                <Text style={[st.headerText, { width: 46 }]}>GD</Text>
-              </View>
-              {impact.map((e, i) => (
-                <View key={e.playerId} style={[st.row, i % 2 === 1 && { backgroundColor: "rgba(255,255,255,0.015)" }]}>
-                  <Text style={[st.nameText, { width: 120 }]} numberOfLines={1}>{e.name}</Text>
-                  <Text style={[st.numCell, { width: 36, color: colors.textMuted }]}>{e.present.gp}</Text>
-                  <Text style={[st.numCell, st.impactCol, { color: colors.accent }]}>{e.present.w}</Text>
-                  <Text style={[st.numCell, st.impactCol, { color: colors.danger }]}>{e.present.l}</Text>
-                  <Text style={[st.numCell, st.impactCol, { color: colors.warn }]}>{e.present.t}</Text>
-                  <Text style={[st.numCell, { width: 52, fontWeight: "700" }]}>{e.present.winPct.toFixed(3)}</Text>
-                  <Text style={[st.numCell, { width: 46, color: e.present.gd > 0 ? colors.accent : e.present.gd < 0 ? colors.danger : colors.textMuted }]}>{e.present.gd > 0 ? `+${e.present.gd}` : e.present.gd}</Text>
-                  <Text style={[st.numCell, st.impactDivider, { width: 60, color: colors.textMuted }]}>{e.missed.gp}</Text>
-                  <Text style={[st.numCell, st.impactCol, { color: colors.accent }]}>{e.missed.w}</Text>
-                  <Text style={[st.numCell, st.impactCol, { color: colors.danger }]}>{e.missed.l}</Text>
-                  <Text style={[st.numCell, st.impactCol, { color: colors.warn }]}>{e.missed.t}</Text>
-                  <Text style={[st.numCell, { width: 52, fontWeight: "700" }]}>{e.missed.gp > 0 ? e.missed.winPct.toFixed(3) : "–"}</Text>
-                  <Text style={[st.numCell, { width: 46, color: e.missed.gd > 0 ? colors.accent : e.missed.gd < 0 ? colors.danger : colors.textMuted }]}>{e.missed.gp > 0 ? (e.missed.gd > 0 ? `+${e.missed.gd}` : e.missed.gd) : "–"}</Text>
+          <View style={st.table}>
+            <ScrollView horizontal showsHorizontalScrollIndicator>
+              <View>
+                <View style={st.headerRow}>
+                  <HeaderLabel label="Player" width={120} align="left" />
+                  <HeaderLabel label="GP" width={36} />
+                  <HeaderLabel label="W" width={30} />
+                  <HeaderLabel label="L" width={30} />
+                  <HeaderLabel label="T" width={30} />
+                  <HeaderLabel label="PCT" width={52} />
+                  <HeaderLabel label="GD" width={46} />
+                  <HeaderLabel label="Missed" width={60} divider />
+                  <HeaderLabel label="W" width={30} />
+                  <HeaderLabel label="L" width={30} />
+                  <HeaderLabel label="T" width={30} />
+                  <HeaderLabel label="PCT" width={52} />
+                  <HeaderLabel label="GD" width={46} />
                 </View>
-              ))}
-            </View>
-          </ScrollView>
+                {impact.map((e, i) => (
+                  <View key={e.playerId} style={[st.row, i % 2 === 1 && { backgroundColor: "rgba(255,255,255,0.015)" }]}>
+                    <Text style={[st.nameText, { width: 120 }]} numberOfLines={1}>{e.name}</Text>
+                    <Text style={[st.numCell, { width: 36, color: colors.textMuted }]}>{e.present.gp}</Text>
+                    <Text style={[st.numCell, st.impactCol, { color: colors.accent }]}>{e.present.w}</Text>
+                    <Text style={[st.numCell, st.impactCol, { color: colors.danger }]}>{e.present.l}</Text>
+                    <Text style={[st.numCell, st.impactCol, { color: colors.warn }]}>{e.present.t}</Text>
+                    <Text style={[st.numCell, { width: 52, fontWeight: "700" }]}>{e.present.winPct.toFixed(3)}</Text>
+                    <Text style={[st.numCell, { width: 46, color: e.present.gd > 0 ? colors.accent : e.present.gd < 0 ? colors.danger : colors.textMuted }]}>{e.present.gd > 0 ? `+${e.present.gd}` : e.present.gd}</Text>
+                    <Text style={[st.numCell, st.impactDivider, { width: 60, color: colors.textMuted }]}>{e.missed.gp}</Text>
+                    <Text style={[st.numCell, st.impactCol, { color: colors.accent }]}>{e.missed.w}</Text>
+                    <Text style={[st.numCell, st.impactCol, { color: colors.danger }]}>{e.missed.l}</Text>
+                    <Text style={[st.numCell, st.impactCol, { color: colors.warn }]}>{e.missed.t}</Text>
+                    <Text style={[st.numCell, { width: 52, fontWeight: "700" }]}>{e.missed.gp > 0 ? e.missed.winPct.toFixed(3) : "–"}</Text>
+                    <Text style={[st.numCell, { width: 46, color: e.missed.gd > 0 ? colors.accent : e.missed.gd < 0 ? colors.danger : colors.textMuted }]}>{e.missed.gp > 0 ? (e.missed.gd > 0 ? `+${e.missed.gd}` : e.missed.gd) : "–"}</Text>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
         </>
       )}
 
@@ -258,6 +278,7 @@ export function HistoryScreen() {
 const st = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, padding: spacing.md },
   header: { fontSize: 15, fontWeight: "700", color: colors.textMuted, letterSpacing: 1.5, marginBottom: spacing.md, marginTop: spacing.md },
+  majorHeader: { fontSize: 15, fontWeight: "700", color: colors.textMuted, letterSpacing: 1.5, marginBottom: spacing.md, marginTop: spacing.lg },
   sectionHeader: { fontSize: 12, fontWeight: "700", color: colors.textDim, letterSpacing: 1, marginBottom: spacing.sm, marginTop: spacing.sm },
   table: { borderRadius: radii.md, overflow: "hidden", borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, marginBottom: spacing.md },
   headerRow: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.bg },
@@ -266,7 +287,6 @@ const st = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 10, paddingHorizontal: 6 },
   nameText: { fontSize: 13, fontWeight: "600", color: colors.text },
   numCell: { fontFamily: "monospace", fontSize: 13, fontWeight: "600", textAlign: "center", color: colors.text },
-  numCol: { width: 36 },
   impactCol: { width: 30 },
   impactDivider: { borderLeftWidth: 1, borderLeftColor: colors.border, paddingLeft: 8 },
   empty: { color: colors.textDim, textAlign: "center" },
