@@ -120,11 +120,11 @@ function impactValue(e: ImpactEntry, key: ImpactSortKey): number | string {
 
 // Shared header cell — sortable when given onPress, otherwise a plain label.
 // Keeps every table's header row using the same padding so they all line up.
-function HeaderCell({ label, width, flex, align, divider, onPress, active, asc }: {
-  label: string; width?: number; flex?: number; align?: "left" | "center"; divider?: boolean;
+function HeaderCell({ label, width, flex, minWidth, align, divider, onPress, active, asc }: {
+  label: string; width?: number; flex?: number; minWidth?: number; align?: "left" | "center"; divider?: boolean;
   onPress?: () => void; active?: boolean; asc?: boolean;
 }) {
-  const cellStyle = [st.headerCell, divider && st.impactDivider, width ? { width } : {}, flex ? { flex } : {}];
+  const cellStyle = [st.headerCell, divider && st.impactDivider, width ? { width } : {}, flex ? { flex } : {}, minWidth ? { minWidth } : {}];
   const text = (
     <Text style={[st.headerText, align === "left" && { textAlign: "left" }, active && { color: colors.accent }]}>
       {label}{active ? (asc ? " ↑" : " ↓") : ""}
@@ -275,7 +275,7 @@ export function HistoryScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ flexGrow: 1 }}>
               <View style={{ flex: 1 }}>
                 <View style={st.headerRow}>
-                  <HeaderCell label="Player" width={120} align="left" onPress={() => handleImpSort("name")} active={impSortKey === "name"} asc={impSortAsc} />
+                  <HeaderCell label="Player" flex={1} minWidth={120} align="left" onPress={() => handleImpSort("name")} active={impSortKey === "name"} asc={impSortAsc} />
                   <HeaderCell label="GP" width={36} onPress={() => handleImpSort("presentGp")} active={impSortKey === "presentGp"} asc={impSortAsc} />
                   <HeaderCell label="W" width={30} onPress={() => handleImpSort("presentW")} active={impSortKey === "presentW"} asc={impSortAsc} />
                   <HeaderCell label="L" width={30} onPress={() => handleImpSort("presentL")} active={impSortKey === "presentL"} asc={impSortAsc} />
@@ -291,7 +291,7 @@ export function HistoryScreen() {
                 </View>
                 {sortedImpact.map((e, i) => (
                   <View key={e.playerId} style={[st.row, i % 2 === 1 && { backgroundColor: "rgba(255,255,255,0.015)" }]}>
-                    <Text style={[st.nameText, { width: 120 }]} numberOfLines={1}>{e.name}</Text>
+                    <Text style={[st.nameText, { flex: 1, minWidth: 120 }]} numberOfLines={1}>{e.name}</Text>
                     <Text style={[st.numCell, { width: 36, color: colors.textMuted }]}>{e.present.gp}</Text>
                     <Text style={[st.numCell, st.impactCol, { color: colors.accent }]}>{e.present.w}</Text>
                     <Text style={[st.numCell, st.impactCol, { color: colors.danger }]}>{e.present.l}</Text>
