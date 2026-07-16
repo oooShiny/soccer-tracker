@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-nati
 import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
 import { useGames, usePlayers } from "../hooks/useFirestore";
-import { computeSeasonRecord, normalizeTime } from "../services/utils";
+import { computeSeasonRecord, normalizeTime, getResult } from "../services/utils";
 import { Card, StatBox, Badge } from "../components/SharedUI";
 import { OpponentsSection } from "./OpponentsScreen";
 import type { Game, Player } from "../types";
@@ -149,6 +149,10 @@ export function HistoryScreen() {
 
   const record = computeSeasonRecord(allGames);
   const winPct = record.played > 0 ? (record.w + 0.5 * record.d) / record.played : 0;
+  const allTimeForm = [...allGames]
+    .filter(g => g.ourScore != null)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(getResult);
   const timeBreakdown = computeTimeBreakdown(allGames);
   const attendance = computeAttendance(allGames, players);
   const impact = computeAttendanceImpact(allGames, players);
@@ -206,6 +210,19 @@ export function HistoryScreen() {
           {record.played} games played • {(winPct * 100).toFixed(1)}% win rate
         </Text>
       </Card>
+
+      {allTimeForm.length > 0 && (
+        <>
+          <Text style={st.sectionHeader}>All-Time Form</Text>
+          <View style={st.formGrid}>
+            {allTimeForm.map((r, i) => (
+              <View key={i} style={[st.formPill, { backgroundColor: r === "W" ? colors.accentDim : r === "L" ? colors.dangerDim : colors.warnDim }]}>
+                <Text style={[st.formText, { color: r === "W" ? colors.accent : r === "L" ? colors.danger : colors.warn }]}>{r === "D" ? "T" : r}</Text>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
 
       <Text style={st.majorHeader}>TIME</Text>
 
@@ -335,4 +352,7 @@ const st = StyleSheet.create({
   impactCol: { width: 30 },
   impactDivider: { borderLeftWidth: 1, borderLeftColor: colors.border, paddingLeft: 8 },
   empty: { color: colors.textDim, textAlign: "center" },
+  formGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: spacing.md },
+  formPill: { width: 28, height: 28, borderRadius: radii.sm, alignItems: "center", justifyContent: "center" },
+  formText: { fontWeight: "700", fontSize: 12, fontFamily: "monospace" },
 });
