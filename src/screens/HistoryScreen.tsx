@@ -194,7 +194,6 @@ export function HistoryScreen() {
       <Text style={st.header}>HISTORY</Text>
 
       {/* ─── Time ─────────────────────────────────────────────── */}
-      <Text style={st.majorHeader}>TIME</Text>
       <Card>
         <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
           <StatBox label="W" value={record.w} color={colors.accent} />
@@ -208,29 +207,31 @@ export function HistoryScreen() {
         </Text>
       </Card>
 
+      <Text style={st.majorHeader}>TIME</Text>
+
       {sortedTimeBreakdown.length > 0 && (
         <>
           <Text style={st.sectionHeader}>Game Time</Text>
           <View style={st.table}>
             <View style={st.headerRow}>
               <HeaderCell label="Game Time" flex={1} align="left" onPress={() => handleGtSort("time")} active={gtSortKey === "time"} asc={gtSortAsc} />
+              <HeaderCell label="GP" width={36} onPress={() => handleGtSort("total")} active={gtSortKey === "total"} asc={gtSortAsc} />
               <HeaderCell label="W" width={32} onPress={() => handleGtSort("w")} active={gtSortKey === "w"} asc={gtSortAsc} />
               <HeaderCell label="D" width={32} onPress={() => handleGtSort("d")} active={gtSortKey === "d"} asc={gtSortAsc} />
               <HeaderCell label="L" width={32} onPress={() => handleGtSort("l")} active={gtSortKey === "l"} asc={gtSortAsc} />
               <HeaderCell label="GF" width={36} onPress={() => handleGtSort("gf")} active={gtSortKey === "gf"} asc={gtSortAsc} />
               <HeaderCell label="GA" width={36} onPress={() => handleGtSort("ga")} active={gtSortKey === "ga"} asc={gtSortAsc} />
-              <HeaderCell label="GP" width={36} onPress={() => handleGtSort("total")} active={gtSortKey === "total"} asc={gtSortAsc} />
               <HeaderCell label="PCT" width={52} onPress={() => handleGtSort("pct")} active={gtSortKey === "pct"} asc={gtSortAsc} />
             </View>
             {sortedTimeBreakdown.map((row, i) => (
               <View key={row.time} style={[st.row, i % 2 === 1 && { backgroundColor: "rgba(255,255,255,0.015)" }]}>
                 <Text style={[st.nameText, { flex: 1 }]}>{row.time}</Text>
+                <Text style={[st.numCell, { width: 36, color: colors.textMuted }]}>{row.total}</Text>
                 <Text style={[st.numCell, { width: 32, color: colors.accent }]}>{row.w}</Text>
                 <Text style={[st.numCell, { width: 32, color: colors.warn }]}>{row.d}</Text>
                 <Text style={[st.numCell, { width: 32, color: colors.danger }]}>{row.l}</Text>
                 <Text style={[st.numCell, { width: 36 }]}>{row.gf}</Text>
                 <Text style={[st.numCell, { width: 36 }]}>{row.ga}</Text>
-                <Text style={[st.numCell, { width: 36, color: colors.textMuted }]}>{row.total}</Text>
                 <Text style={[st.numCell, { width: 52, fontWeight: "700" }]}>{row.pct.toFixed(3)}</Text>
               </View>
             ))}
@@ -271,8 +272,8 @@ export function HistoryScreen() {
           <Text style={[st.sectionHeader, { marginTop: spacing.lg }]}>Attendance vs Win %</Text>
           <Text style={{ fontSize: 11, color: colors.textDim, marginBottom: spacing.sm }}>How the team performs with vs. without each player.</Text>
           <View style={st.table}>
-            <ScrollView horizontal showsHorizontalScrollIndicator style={{ width: "100%" }}>
-              <View style={{ minWidth: "100%" }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ flexGrow: 1 }}>
+              <View style={{ flex: 1 }}>
                 <View style={st.headerRow}>
                   <HeaderCell label="Player" width={120} align="left" onPress={() => handleImpSort("name")} active={impSortKey === "name"} asc={impSortAsc} />
                   <HeaderCell label="GP" width={36} onPress={() => handleImpSort("presentGp")} active={impSortKey === "presentGp"} asc={impSortAsc} />
