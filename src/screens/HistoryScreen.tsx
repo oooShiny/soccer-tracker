@@ -9,10 +9,10 @@ import { OpponentsSection } from "./OpponentsScreen";
 import type { Game, Player } from "../types";
 
 // ─── Team Record: game-time breakdown ──────────────────────────────
-interface TimeBreakdownRow { time: string; w: number; d: number; l: number; gf: number; ga: number; total: number }
+interface TimeBreakdownRow { time: string; w: number; d: number; l: number; gf: number; ga: number; total: number; pct: number }
 
 // Minutes-since-midnight for chronological sorting; blank/unparseable times sort last
-function timeSortKey(time: string): number {
+function timeToMinutes(time: string): number {
   const normalized = normalizeTime(time);
   const match = normalized.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/);
   if (!match) return 24 * 60;
@@ -24,7 +24,7 @@ function timeSortKey(time: string): number {
 
 function computeTimeBreakdown(games: Game[]): TimeBreakdownRow[] {
   const played = games.filter(g => g.ourScore != null);
-  const map: Record<string, TimeBreakdownRow> = {};
+  const map: Record<string, Omit<TimeBreakdownRow, "pct">> = {};
   for (const g of played) {
     const time = normalizeTime(g.time) || "No time set";
     if (!map[time]) map[time] = { time, w: 0, d: 0, l: 0, gf: 0, ga: 0, total: 0 };
@@ -36,8 +36,10 @@ function computeTimeBreakdown(games: Game[]): TimeBreakdownRow[] {
     else if (g.ourScore! < g.theirScore!) row.l++;
     else row.d++;
   }
-  return Object.values(map).sort((a, b) => timeSortKey(a.time) - timeSortKey(b.time));
+  return Object.values(map).map(r => ({ ...r, pct: r.total > 0 ? (r.w + 0.5 * r.d) / r.total : 0 }));
 }
+
+type GameTimeSortKey = "time" | "w" | "d" | "l" | "gf" | "ga" | "total" | "pct";
 
 // ─── Attendance ─────────────────────────────────────────────────────
 interface AttendanceEntry {
@@ -68,6 +70,8 @@ function computeAttendance(games: Game[], players: Player[]): AttendanceEntry[] 
   }).filter(e => e.attended + e.missed > 0);
 }
 
+type AttendanceSortKey = "name" | "attended" | "missed" | "pct" | "longest" | "current";
+
 interface SplitRecord { gp: number; w: number; l: number; t: number; winPct: number; gd: number }
 interface ImpactEntry { playerId: string; name: string; present: SplitRecord; missed: SplitRecord }
 
@@ -91,18 +95,57 @@ function computeAttendanceImpact(games: Game[], players: Player[]): ImpactEntry[
     if (presentGames.length + missedGames.length === 0) continue;
     results.push({ playerId: p.id, name: p.name, present: splitRecord(presentGames), missed: splitRecord(missedGames) });
   }
-  return results.sort((a, b) => b.present.gp - a.present.gp);
+  return results;
 }
 
-type SortKey = "name" | "attended" | "missed" | "pct" | "longest" | "current";
+type ImpactSortKey = "name" | "presentGp" | "presentW" | "presentL" | "presentT" | "presentPct" | "presentGd" | "missedGp" | "missedW" | "missedL" | "missedT" | "missedPct" | "missedGd";
+
+function impactValue(e: ImpactEntry, key: ImpactSortKey): number | string {
+  switch (key) {
+    case "name": return e.name;
+    case "presentGp": return e.present.gp;
+    case "presentW": return e.present.w;
+    case "presentL": return e.present.l;
+    case "presentT": return e.present.t;
+    case "presentPct": return e.present.winPct;
+    case "presentGd": return e.present.gd;
+    case "missedGp": return e.missed.gp;
+    case "missedW": return e.missed.w;
+    case "missedL": return e.missed.l;
+    case "missedT": return e.missed.t;
+    case "missedPct": return e.missed.winPct;
+    case "missedGd": return e.missed.gd;
+  }
+}
+
+// Shared header cell — sortable when given onPress, otherwise a plain label.
+// Keeps every table's header row using the same padding so they all line up.
+function HeaderCell({ label, width, flex, align, divider, onPress, active, asc }: {
+  label: string; width?: number; flex?: number; align?: "left" | "center"; divider?: boolean;
+  onPress?: () => void; active?: boolean; asc?: boolean;
+}) {
+  const cellStyle = [st.headerCell, divider && st.impactDivider, width ? { width } : {}, flex ? { flex } : {}];
+  const text = (
+    <Text style={[st.headerText, align === "left" && { textAlign: "left" }, active && { color: colors.accent }]}>
+      {label}{active ? (asc ? " ↑" : " ↓") : ""}
+    </Text>
+  );
+  if (!onPress) return <View style={cellStyle}>{text}</View>;
+  return <TouchableOpacity onPress={onPress} style={cellStyle} activeOpacity={0.6}>{text}</TouchableOpacity>;
+}
 
 // ─── Component ────────────────────────────────────────────────────
 export function HistoryScreen() {
   const { teamId } = useAuth();
   const { data: allGames } = useGames(teamId);
   const { data: players } = usePlayers(teamId);
-  const [sortKey, setSortKey] = useState<SortKey>("attended");
-  const [sortAsc, setSortAsc] = useState(false);
+
+  const [gtSortKey, setGtSortKey] = useState<GameTimeSortKey>("time");
+  const [gtSortAsc, setGtSortAsc] = useState(true);
+  const [attSortKey, setAttSortKey] = useState<AttendanceSortKey>("attended");
+  const [attSortAsc, setAttSortAsc] = useState(false);
+  const [impSortKey, setImpSortKey] = useState<ImpactSortKey>("presentGp");
+  const [impSortAsc, setImpSortAsc] = useState(false);
 
   const record = computeSeasonRecord(allGames);
   const winPct = record.played > 0 ? (record.w + 0.5 * record.d) / record.played : 0;
@@ -110,37 +153,41 @@ export function HistoryScreen() {
   const attendance = computeAttendance(allGames, players);
   const impact = computeAttendanceImpact(allGames, players);
 
+  const handleGtSort = (key: GameTimeSortKey) => {
+    if (gtSortKey === key) setGtSortAsc(!gtSortAsc);
+    else { setGtSortKey(key); setGtSortAsc(key === "time"); }
+  };
+  const sortedTimeBreakdown = [...timeBreakdown].sort((a, b) => {
+    let cmp = gtSortKey === "time" ? timeToMinutes(a.time) - timeToMinutes(b.time) : (a[gtSortKey] as number) - (b[gtSortKey] as number);
+    if (!gtSortAsc) cmp = -cmp;
+    return cmp;
+  });
+
+  const handleAttSort = (key: AttendanceSortKey) => {
+    if (attSortKey === key) setAttSortAsc(!attSortAsc);
+    else { setAttSortKey(key); setAttSortAsc(key === "name"); }
+  };
   const sortedAttendance = [...attendance].sort((a, b) => {
     let cmp = 0;
-    if (sortKey === "name") cmp = a.name.localeCompare(b.name);
-    else cmp = (a[sortKey] as number) - (b[sortKey] as number);
-    if (!sortAsc) cmp = -cmp;
+    if (attSortKey === "name") cmp = a.name.localeCompare(b.name);
+    else cmp = (a[attSortKey] as number) - (b[attSortKey] as number);
+    if (!attSortAsc) cmp = -cmp;
     if (cmp === 0) cmp = b.attended - a.attended;
     return cmp;
   });
 
-  const handleSort = (key: SortKey) => {
-    if (sortKey === key) setSortAsc(!sortAsc);
-    else { setSortKey(key); setSortAsc(key === "name"); }
+  const handleImpSort = (key: ImpactSortKey) => {
+    if (impSortKey === key) setImpSortAsc(!impSortAsc);
+    else { setImpSortKey(key); setImpSortAsc(key === "name"); }
   };
+  const sortedImpact = [...impact].sort((a, b) => {
+    const av = impactValue(a, impSortKey), bv = impactValue(b, impSortKey);
+    let cmp = typeof av === "string" ? av.localeCompare(bv as string) : (av as number) - (bv as number);
+    if (!impSortAsc) cmp = -cmp;
+    return cmp;
+  });
 
   const isDeactivated = (playerId: string) => players.find(p => p.id === playerId)?.active === false;
-
-  const SortHeader = ({ label, k, width, flex }: { label: string; k: SortKey; width?: number; flex?: number }) => (
-    <TouchableOpacity onPress={() => handleSort(k)} style={[st.headerCell, width ? { width } : {}, flex ? { flex } : {}]} activeOpacity={0.6}>
-      <Text style={[st.headerText, sortKey === k && { color: colors.accent }]}>
-        {label}{sortKey === k ? (sortAsc ? " ↑" : " ↓") : ""}
-      </Text>
-    </TouchableOpacity>
-  );
-
-  // Static (non-sortable) header cell — keeps the same padding as SortHeader so every
-  // table's header row lines up and looks consistent, whether sortable or not.
-  const HeaderLabel = ({ label, width, flex, align, divider }: { label: string; width?: number; flex?: number; align?: "left" | "center"; divider?: boolean }) => (
-    <View style={[st.headerCell, divider && st.impactDivider, width ? { width } : {}, flex ? { flex } : {}]}>
-      <Text style={[st.headerText, align === "left" && { textAlign: "left" }]}>{label}</Text>
-    </View>
-  );
 
   return (
     <ScrollView style={st.container}>
@@ -161,35 +208,32 @@ export function HistoryScreen() {
         </Text>
       </Card>
 
-      {timeBreakdown.length > 0 && (
+      {sortedTimeBreakdown.length > 0 && (
         <>
           <Text style={st.sectionHeader}>Game Time</Text>
           <View style={st.table}>
             <View style={st.headerRow}>
-              <HeaderLabel label="Game Time" flex={1} align="left" />
-              <HeaderLabel label="W" width={32} />
-              <HeaderLabel label="D" width={32} />
-              <HeaderLabel label="L" width={32} />
-              <HeaderLabel label="GF" width={36} />
-              <HeaderLabel label="GA" width={36} />
-              <HeaderLabel label="GP" width={36} />
-              <HeaderLabel label="PCT" width={52} />
+              <HeaderCell label="Game Time" flex={1} align="left" onPress={() => handleGtSort("time")} active={gtSortKey === "time"} asc={gtSortAsc} />
+              <HeaderCell label="W" width={32} onPress={() => handleGtSort("w")} active={gtSortKey === "w"} asc={gtSortAsc} />
+              <HeaderCell label="D" width={32} onPress={() => handleGtSort("d")} active={gtSortKey === "d"} asc={gtSortAsc} />
+              <HeaderCell label="L" width={32} onPress={() => handleGtSort("l")} active={gtSortKey === "l"} asc={gtSortAsc} />
+              <HeaderCell label="GF" width={36} onPress={() => handleGtSort("gf")} active={gtSortKey === "gf"} asc={gtSortAsc} />
+              <HeaderCell label="GA" width={36} onPress={() => handleGtSort("ga")} active={gtSortKey === "ga"} asc={gtSortAsc} />
+              <HeaderCell label="GP" width={36} onPress={() => handleGtSort("total")} active={gtSortKey === "total"} asc={gtSortAsc} />
+              <HeaderCell label="PCT" width={52} onPress={() => handleGtSort("pct")} active={gtSortKey === "pct"} asc={gtSortAsc} />
             </View>
-            {timeBreakdown.map((row, i) => {
-              const pct = row.total > 0 ? (row.w + 0.5 * row.d) / row.total : 0;
-              return (
-                <View key={row.time} style={[st.row, i % 2 === 1 && { backgroundColor: "rgba(255,255,255,0.015)" }]}>
-                  <Text style={[st.nameText, { flex: 1 }]}>{row.time}</Text>
-                  <Text style={[st.numCell, { width: 32, color: colors.accent }]}>{row.w}</Text>
-                  <Text style={[st.numCell, { width: 32, color: colors.warn }]}>{row.d}</Text>
-                  <Text style={[st.numCell, { width: 32, color: colors.danger }]}>{row.l}</Text>
-                  <Text style={[st.numCell, { width: 36 }]}>{row.gf}</Text>
-                  <Text style={[st.numCell, { width: 36 }]}>{row.ga}</Text>
-                  <Text style={[st.numCell, { width: 36, color: colors.textMuted }]}>{row.total}</Text>
-                  <Text style={[st.numCell, { width: 52, fontWeight: "700" }]}>{pct.toFixed(3)}</Text>
-                </View>
-              );
-            })}
+            {sortedTimeBreakdown.map((row, i) => (
+              <View key={row.time} style={[st.row, i % 2 === 1 && { backgroundColor: "rgba(255,255,255,0.015)" }]}>
+                <Text style={[st.nameText, { flex: 1 }]}>{row.time}</Text>
+                <Text style={[st.numCell, { width: 32, color: colors.accent }]}>{row.w}</Text>
+                <Text style={[st.numCell, { width: 32, color: colors.warn }]}>{row.d}</Text>
+                <Text style={[st.numCell, { width: 32, color: colors.danger }]}>{row.l}</Text>
+                <Text style={[st.numCell, { width: 36 }]}>{row.gf}</Text>
+                <Text style={[st.numCell, { width: 36 }]}>{row.ga}</Text>
+                <Text style={[st.numCell, { width: 36, color: colors.textMuted }]}>{row.total}</Text>
+                <Text style={[st.numCell, { width: 52, fontWeight: "700" }]}>{row.pct.toFixed(3)}</Text>
+              </View>
+            ))}
           </View>
         </>
       )}
@@ -199,12 +243,12 @@ export function HistoryScreen() {
       <Text style={st.sectionHeader}>Attendance</Text>
       <View style={st.table}>
         <View style={st.headerRow}>
-          <SortHeader label="Player" k="name" flex={1} />
-          <SortHeader label="GP" k="attended" width={40} />
-          <SortHeader label="Miss" k="missed" width={44} />
-          <SortHeader label="PCT" k="pct" width={52} />
-          <SortHeader label="Best" k="longest" width={44} />
-          <SortHeader label="Now" k="current" width={44} />
+          <HeaderCell label="Player" flex={1} align="left" onPress={() => handleAttSort("name")} active={attSortKey === "name"} asc={attSortAsc} />
+          <HeaderCell label="GP" width={40} onPress={() => handleAttSort("attended")} active={attSortKey === "attended"} asc={attSortAsc} />
+          <HeaderCell label="Miss" width={44} onPress={() => handleAttSort("missed")} active={attSortKey === "missed"} asc={attSortAsc} />
+          <HeaderCell label="PCT" width={52} onPress={() => handleAttSort("pct")} active={attSortKey === "pct"} asc={attSortAsc} />
+          <HeaderCell label="Best" width={44} onPress={() => handleAttSort("longest")} active={attSortKey === "longest"} asc={attSortAsc} />
+          <HeaderCell label="Now" width={44} onPress={() => handleAttSort("current")} active={attSortKey === "current"} asc={attSortAsc} />
         </View>
         {sortedAttendance.map((e, i) => (
           <View key={e.playerId} style={[st.row, i % 2 === 1 && { backgroundColor: "rgba(255,255,255,0.015)" }]}>
@@ -222,29 +266,29 @@ export function HistoryScreen() {
         {sortedAttendance.length === 0 && <Card><Text style={st.empty}>No attendance data yet.</Text></Card>}
       </View>
 
-      {impact.length > 0 && (
+      {sortedImpact.length > 0 && (
         <>
           <Text style={[st.sectionHeader, { marginTop: spacing.lg }]}>Attendance vs Win %</Text>
           <Text style={{ fontSize: 11, color: colors.textDim, marginBottom: spacing.sm }}>How the team performs with vs. without each player.</Text>
           <View style={st.table}>
-            <ScrollView horizontal showsHorizontalScrollIndicator>
-              <View>
+            <ScrollView horizontal showsHorizontalScrollIndicator style={{ width: "100%" }}>
+              <View style={{ minWidth: "100%" }}>
                 <View style={st.headerRow}>
-                  <HeaderLabel label="Player" width={120} align="left" />
-                  <HeaderLabel label="GP" width={36} />
-                  <HeaderLabel label="W" width={30} />
-                  <HeaderLabel label="L" width={30} />
-                  <HeaderLabel label="T" width={30} />
-                  <HeaderLabel label="PCT" width={52} />
-                  <HeaderLabel label="GD" width={46} />
-                  <HeaderLabel label="Missed" width={60} divider />
-                  <HeaderLabel label="W" width={30} />
-                  <HeaderLabel label="L" width={30} />
-                  <HeaderLabel label="T" width={30} />
-                  <HeaderLabel label="PCT" width={52} />
-                  <HeaderLabel label="GD" width={46} />
+                  <HeaderCell label="Player" width={120} align="left" onPress={() => handleImpSort("name")} active={impSortKey === "name"} asc={impSortAsc} />
+                  <HeaderCell label="GP" width={36} onPress={() => handleImpSort("presentGp")} active={impSortKey === "presentGp"} asc={impSortAsc} />
+                  <HeaderCell label="W" width={30} onPress={() => handleImpSort("presentW")} active={impSortKey === "presentW"} asc={impSortAsc} />
+                  <HeaderCell label="L" width={30} onPress={() => handleImpSort("presentL")} active={impSortKey === "presentL"} asc={impSortAsc} />
+                  <HeaderCell label="T" width={30} onPress={() => handleImpSort("presentT")} active={impSortKey === "presentT"} asc={impSortAsc} />
+                  <HeaderCell label="PCT" width={52} onPress={() => handleImpSort("presentPct")} active={impSortKey === "presentPct"} asc={impSortAsc} />
+                  <HeaderCell label="GD" width={46} onPress={() => handleImpSort("presentGd")} active={impSortKey === "presentGd"} asc={impSortAsc} />
+                  <HeaderCell label="Missed" width={60} divider onPress={() => handleImpSort("missedGp")} active={impSortKey === "missedGp"} asc={impSortAsc} />
+                  <HeaderCell label="W" width={30} onPress={() => handleImpSort("missedW")} active={impSortKey === "missedW"} asc={impSortAsc} />
+                  <HeaderCell label="L" width={30} onPress={() => handleImpSort("missedL")} active={impSortKey === "missedL"} asc={impSortAsc} />
+                  <HeaderCell label="T" width={30} onPress={() => handleImpSort("missedT")} active={impSortKey === "missedT"} asc={impSortAsc} />
+                  <HeaderCell label="PCT" width={52} onPress={() => handleImpSort("missedPct")} active={impSortKey === "missedPct"} asc={impSortAsc} />
+                  <HeaderCell label="GD" width={46} onPress={() => handleImpSort("missedGd")} active={impSortKey === "missedGd"} asc={impSortAsc} />
                 </View>
-                {impact.map((e, i) => (
+                {sortedImpact.map((e, i) => (
                   <View key={e.playerId} style={[st.row, i % 2 === 1 && { backgroundColor: "rgba(255,255,255,0.015)" }]}>
                     <Text style={[st.nameText, { width: 120 }]} numberOfLines={1}>{e.name}</Text>
                     <Text style={[st.numCell, { width: 36, color: colors.textMuted }]}>{e.present.gp}</Text>
