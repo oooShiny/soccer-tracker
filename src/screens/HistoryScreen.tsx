@@ -3,33 +3,38 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-nati
 import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
 import { useGames, usePlayers } from "../hooks/useFirestore";
-import { computeSeasonRecord, getTimeOfDayBucket } from "../services/utils";
+import { computeSeasonRecord, normalizeTime } from "../services/utils";
 import { Card, StatBox, Badge } from "../components/SharedUI";
 import { OpponentsSection } from "./OpponentsScreen";
 import type { Game, Player } from "../types";
 
-// ─── Team Record: time-of-day breakdown ────────────────────────────
-type Bucket = "Morning" | "Afternoon" | "Evening" | "Unknown";
-const BUCKET_ORDER: Bucket[] = ["Morning", "Afternoon", "Evening", "Unknown"];
+// ─── Team Record: game-time breakdown ──────────────────────────────
+interface TimeBreakdownRow { time: string; w: number; d: number; l: number; total: number }
 
-interface TimeBreakdownRow { bucket: Bucket; w: number; d: number; l: number; total: number }
+// Minutes-since-midnight for chronological sorting; blank/unparseable times sort last
+function timeSortKey(time: string): number {
+  const normalized = normalizeTime(time);
+  const match = normalized.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/);
+  if (!match) return 24 * 60;
+  let h = parseInt(match[1]);
+  const m = parseInt(match[2]);
+  if (match[3] === "AM") { if (h === 12) h = 0; } else { if (h !== 12) h += 12; }
+  return h * 60 + m;
+}
 
 function computeTimeBreakdown(games: Game[]): TimeBreakdownRow[] {
   const played = games.filter(g => g.ourScore != null);
-  const map: Record<Bucket, TimeBreakdownRow> = {
-    Morning: { bucket: "Morning", w: 0, d: 0, l: 0, total: 0 },
-    Afternoon: { bucket: "Afternoon", w: 0, d: 0, l: 0, total: 0 },
-    Evening: { bucket: "Evening", w: 0, d: 0, l: 0, total: 0 },
-    Unknown: { bucket: "Unknown", w: 0, d: 0, l: 0, total: 0 },
-  };
+  const map: Record<string, TimeBreakdownRow> = {};
   for (const g of played) {
-    const row = map[getTimeOfDayBucket(g.time) as Bucket];
+    const time = normalizeTime(g.time) || "No time set";
+    if (!map[time]) map[time] = { time, w: 0, d: 0, l: 0, total: 0 };
+    const row = map[time];
     row.total++;
     if (g.ourScore! > g.theirScore!) row.w++;
     else if (g.ourScore! < g.theirScore!) row.l++;
     else row.d++;
   }
-  return BUCKET_ORDER.map(b => map[b]).filter(r => r.total > 0);
+  return Object.values(map).sort((a, b) => timeSortKey(a.time) - timeSortKey(b.time));
 }
 
 // ─── Attendance ─────────────────────────────────────────────────────
@@ -61,27 +66,30 @@ function computeAttendance(games: Game[], players: Player[]): AttendanceEntry[] 
   }).filter(e => e.attended + e.missed > 0);
 }
 
-interface ImpactEntry {
-  playerId: string; name: string;
-  attendedGames: number; winPctAttended: number;
-  missedGames: number; winPctMissed: number;
+interface SplitRecord { gp: number; w: number; l: number; t: number; winPct: number; gd: number }
+interface ImpactEntry { playerId: string; name: string; present: SplitRecord; missed: SplitRecord }
+
+function splitRecord(games: Game[]): SplitRecord {
+  const w = games.filter(g => g.ourScore! > g.theirScore!).length;
+  const l = games.filter(g => g.ourScore! < g.theirScore!).length;
+  const t = games.filter(g => g.ourScore! === g.theirScore!).length;
+  const gf = games.reduce((s, g) => s + (g.ourScore || 0), 0);
+  const ga = games.reduce((s, g) => s + (g.theirScore || 0), 0);
+  const gp = games.length;
+  return { gp, w, l, t, winPct: gp > 0 ? (w + 0.5 * t) / gp : 0, gd: gf - ga };
 }
 
+// For each player, splits the team's record into games they were present for vs. games they missed
 function computeAttendanceImpact(games: Game[], players: Player[]): ImpactEntry[] {
   const played = games.filter(g => g.ourScore != null);
-  const winPct = (list: Game[]) => list.length > 0 ? list.filter(g => g.ourScore! > g.theirScore!).length / list.length : 0;
   const results: ImpactEntry[] = [];
   for (const p of players) {
-    const attendedGames = played.filter(g => !(g.absentPlayerIds || []).includes(p.id));
+    const presentGames = played.filter(g => !(g.absentPlayerIds || []).includes(p.id));
     const missedGames = played.filter(g => (g.absentPlayerIds || []).includes(p.id));
-    if (missedGames.length === 0) continue; // no meaningful comparison without a missed game
-    results.push({
-      playerId: p.id, name: p.name,
-      attendedGames: attendedGames.length, winPctAttended: winPct(attendedGames),
-      missedGames: missedGames.length, winPctMissed: winPct(missedGames),
-    });
+    if (presentGames.length + missedGames.length === 0) continue;
+    results.push({ playerId: p.id, name: p.name, present: splitRecord(presentGames), missed: splitRecord(missedGames) });
   }
-  return results.sort((a, b) => (b.winPctAttended - b.winPctMissed) - (a.winPctAttended - a.winPctMissed));
+  return results.sort((a, b) => b.present.gp - a.present.gp);
 }
 
 type SortKey = "name" | "attended" | "missed" | "pct" | "longest" | "current";
@@ -146,7 +154,7 @@ export function HistoryScreen() {
       {timeBreakdown.length > 0 && (
         <View style={st.table}>
           <View style={st.headerRow}>
-            <Text style={[st.headerText, { flex: 1, textAlign: "left" }]}>Time of Day</Text>
+            <Text style={[st.headerText, { flex: 1, textAlign: "left" }]}>Game Time</Text>
             <Text style={[st.headerText, st.numCol]}>W</Text>
             <Text style={[st.headerText, st.numCol]}>D</Text>
             <Text style={[st.headerText, st.numCol]}>L</Text>
@@ -156,8 +164,8 @@ export function HistoryScreen() {
           {timeBreakdown.map((row, i) => {
             const pct = row.total > 0 ? (row.w + 0.5 * row.d) / row.total : 0;
             return (
-              <View key={row.bucket} style={[st.row, i % 2 === 1 && { backgroundColor: "rgba(255,255,255,0.015)" }]}>
-                <Text style={[st.nameText, { flex: 1 }]}>{row.bucket}</Text>
+              <View key={row.time} style={[st.row, i % 2 === 1 && { backgroundColor: "rgba(255,255,255,0.015)" }]}>
+                <Text style={[st.nameText, { flex: 1 }]}>{row.time}</Text>
                 <Text style={[st.numCell, st.numCol, { color: colors.accent }]}>{row.w}</Text>
                 <Text style={[st.numCell, st.numCol, { color: colors.warn }]}>{row.d}</Text>
                 <Text style={[st.numCell, st.numCol, { color: colors.danger }]}>{row.l}</Text>
@@ -199,20 +207,43 @@ export function HistoryScreen() {
       {impact.length > 0 && (
         <>
           <Text style={[st.sectionHeader, { marginTop: spacing.lg }]}>ATTENDANCE VS WIN %</Text>
-          <View style={st.table}>
-            <View style={st.headerRow}>
-              <Text style={[st.headerText, { flex: 1, textAlign: "left" }]}>Player</Text>
-              <Text style={[st.headerText, { width: 100, textAlign: "center" }]}>Win% (In)</Text>
-              <Text style={[st.headerText, { width: 100, textAlign: "center" }]}>Win% (Out)</Text>
-            </View>
-            {impact.map((e, i) => (
-              <View key={e.playerId} style={[st.row, i % 2 === 1 && { backgroundColor: "rgba(255,255,255,0.015)" }]}>
-                <Text style={[st.nameText, { flex: 1 }]} numberOfLines={1}>{e.name}</Text>
-                <Text style={[st.numCell, { width: 100 }]}>{(e.winPctAttended * 100).toFixed(0)}% ({e.attendedGames})</Text>
-                <Text style={[st.numCell, { width: 100 }]}>{(e.winPctMissed * 100).toFixed(0)}% ({e.missedGames})</Text>
+          <Text style={{ fontSize: 11, color: colors.textDim, marginBottom: spacing.sm }}>How the team performs with vs. without each player.</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator style={st.table}>
+            <View>
+              <View style={st.headerRow}>
+                <Text style={[st.headerText, { width: 120, textAlign: "left" }]}>Player</Text>
+                <Text style={[st.headerText, { width: 36 }]}>GP</Text>
+                <Text style={[st.headerText, st.impactCol]}>W</Text>
+                <Text style={[st.headerText, st.impactCol]}>L</Text>
+                <Text style={[st.headerText, st.impactCol]}>T</Text>
+                <Text style={[st.headerText, { width: 52 }]}>PCT</Text>
+                <Text style={[st.headerText, { width: 46 }]}>GD</Text>
+                <Text style={[st.headerText, st.impactDivider, { width: 60 }]}>Missed</Text>
+                <Text style={[st.headerText, st.impactCol]}>W</Text>
+                <Text style={[st.headerText, st.impactCol]}>L</Text>
+                <Text style={[st.headerText, st.impactCol]}>T</Text>
+                <Text style={[st.headerText, { width: 52 }]}>PCT</Text>
+                <Text style={[st.headerText, { width: 46 }]}>GD</Text>
               </View>
-            ))}
-          </View>
+              {impact.map((e, i) => (
+                <View key={e.playerId} style={[st.row, i % 2 === 1 && { backgroundColor: "rgba(255,255,255,0.015)" }]}>
+                  <Text style={[st.nameText, { width: 120 }]} numberOfLines={1}>{e.name}</Text>
+                  <Text style={[st.numCell, { width: 36, color: colors.textMuted }]}>{e.present.gp}</Text>
+                  <Text style={[st.numCell, st.impactCol, { color: colors.accent }]}>{e.present.w}</Text>
+                  <Text style={[st.numCell, st.impactCol, { color: colors.danger }]}>{e.present.l}</Text>
+                  <Text style={[st.numCell, st.impactCol, { color: colors.warn }]}>{e.present.t}</Text>
+                  <Text style={[st.numCell, { width: 52, fontWeight: "700" }]}>{e.present.winPct.toFixed(3)}</Text>
+                  <Text style={[st.numCell, { width: 46, color: e.present.gd > 0 ? colors.accent : e.present.gd < 0 ? colors.danger : colors.textMuted }]}>{e.present.gd > 0 ? `+${e.present.gd}` : e.present.gd}</Text>
+                  <Text style={[st.numCell, st.impactDivider, { width: 60, color: colors.textMuted }]}>{e.missed.gp}</Text>
+                  <Text style={[st.numCell, st.impactCol, { color: colors.accent }]}>{e.missed.w}</Text>
+                  <Text style={[st.numCell, st.impactCol, { color: colors.danger }]}>{e.missed.l}</Text>
+                  <Text style={[st.numCell, st.impactCol, { color: colors.warn }]}>{e.missed.t}</Text>
+                  <Text style={[st.numCell, { width: 52, fontWeight: "700" }]}>{e.missed.gp > 0 ? e.missed.winPct.toFixed(3) : "–"}</Text>
+                  <Text style={[st.numCell, { width: 46, color: e.missed.gd > 0 ? colors.accent : e.missed.gd < 0 ? colors.danger : colors.textMuted }]}>{e.missed.gp > 0 ? (e.missed.gd > 0 ? `+${e.missed.gd}` : e.missed.gd) : "–"}</Text>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
         </>
       )}
 
@@ -236,5 +267,7 @@ const st = StyleSheet.create({
   nameText: { fontSize: 13, fontWeight: "600", color: colors.text },
   numCell: { fontFamily: "monospace", fontSize: 13, fontWeight: "600", textAlign: "center", color: colors.text },
   numCol: { width: 36 },
+  impactCol: { width: 30 },
+  impactDivider: { borderLeftWidth: 1, borderLeftColor: colors.border, paddingLeft: 8 },
   empty: { color: colors.textDim, textAlign: "center" },
 });

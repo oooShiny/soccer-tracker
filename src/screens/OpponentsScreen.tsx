@@ -4,7 +4,7 @@ import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
 import { useGames, useOpponents, useSeasons } from "../hooks/useFirestore";
 import { formatDate, getResult, getResultColor } from "../services/utils";
-import { Card, StatBox } from "../components/SharedUI";
+import { Card } from "../components/SharedUI";
 import type { Game, Opponent } from "../types";
 
 interface OpponentRecord {
@@ -90,10 +90,6 @@ export function OpponentsSection() {
     else { setSortKey(key); setSortAsc(key === "name"); }
   };
 
-  const totalW = records.reduce((s, r) => s + r.w, 0);
-  const totalD = records.reduce((s, r) => s + r.d, 0);
-  const totalL = records.reduce((s, r) => s + r.l, 0);
-
   const SortHeader = ({ label, k, width, flex }: { label: string; k: SortKey; width?: number; flex?: number }) => (
     <TouchableOpacity onPress={() => handleSort(k)} style={[st.headerCell, width ? { width } : {}, flex ? { flex } : {}]} activeOpacity={0.6}>
       <Text style={[st.headerText, sortKey === k && { color: colors.accent }]}>
@@ -105,18 +101,6 @@ export function OpponentsSection() {
   return (
     <View style={st.container}>
       <Text style={st.header}>OPPONENTS</Text>
-
-      {records.length > 0 && (
-        <Card>
-          <Text style={{ fontSize: 12, color: colors.textMuted, fontWeight: "600", letterSpacing: 1, textAlign: "center", marginBottom: 8 }}>ALL-TIME RECORD</Text>
-          <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
-            <StatBox label="W" value={totalW} color={colors.accent} />
-            <StatBox label="T" value={totalD} color={colors.warn} />
-            <StatBox label="L" value={totalL} color={colors.danger} />
-            <StatBox label="Teams" value={records.length} color={colors.text} />
-          </View>
-        </Card>
-      )}
 
       {/* Table */}
       <View style={st.table}>
