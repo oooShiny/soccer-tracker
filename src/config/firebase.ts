@@ -2,18 +2,14 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// ─── Firebase Configuration ───────────────────────────────────────
-// Replace these values with your Firebase project credentials.
-// You can find them in the Firebase Console under:
-// Project Settings > General > Your apps > Web app
 const firebaseConfig = {
-    apiKey: "AIzaSyCnwTdGarshLdsntYxlvelQfw5PPljdy1o",
-    authDomain: "soccer-tracker-1fbce.firebaseapp.com",
-    projectId: "soccer-tracker-1fbce",
-    storageBucket: "soccer-tracker-1fbce.firebasestorage.app",
-    messagingSenderId: "643942888029",
-    appId: "1:643942888029:web:1b784a5f911ca17690d3b4",
-    measurementId: "G-26PEM151KH"
+    apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+    authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+    measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
 const app = initializeApp(firebaseConfig);
