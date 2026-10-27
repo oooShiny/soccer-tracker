@@ -55,7 +55,10 @@ export function PlayersScreen() {
         keeperStats: editingPlayer?.keeperStats ?? null,
         active: editingPlayer?.active ?? true,
         deactivatedAt: editingPlayer?.deactivatedAt ?? null,
-        inactiveSeasonIds: editingPlayer?.inactiveSeasonIds ?? [],
+        // New players are inactive for every season except the active one(s)
+        inactiveSeasonIds: editingPlayer
+          ? editingPlayer.inactiveSeasonIds ?? []
+          : seasons.filter(s => s.status !== "Active").map(s => s.id),
       };
       if (editingPlayer) {
         await updatePlayer(teamId, editingPlayer.id, data);
