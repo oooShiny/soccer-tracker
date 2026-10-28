@@ -13,6 +13,7 @@ export function GameCard({ game }: { game: Game }) {
   const result = getResult(game);
   const color = getResultColor(result);
   const played = game.ourScore != null;
+  const goals = [...(game.goalTimeline || [])].sort((a, b) => a.order - b.order);
   const multi = (game.keeperAppearances?.length || 0) > 1;
 
   return (
@@ -32,6 +33,13 @@ export function GameCard({ game }: { game: Game }) {
               </View>
             </View>
           </View>
+          {goals.length > 0 && (
+            <View style={s.timeline}>
+              {goals.map((g, i) => (
+                <View key={i} style={[s.goalSquare, { backgroundColor: g.type === "for" ? colors.accent : colors.danger }]} />
+              ))}
+            </View>
+          )}
           {played ? (
             <Text style={[s.score, { color }]}>{game.ourScore} – {game.theirScore}</Text>
           ) : <Badge color={colors.blue} bg={colors.blueDim}>Upcoming</Badge>}
@@ -46,5 +54,7 @@ const s = StyleSheet.create({
   resultText: { fontWeight: "700", fontSize: 12, fontFamily: "monospace" },
   opponent: { fontWeight: "600", fontSize: 15, color: colors.text },
   dateText: { color: colors.textMuted, fontSize: 12 },
+  timeline: { flexDirection: "row", flexWrap: "wrap", gap: 4, maxWidth: 110, justifyContent: "flex-end", marginHorizontal: 12 },
+  goalSquare: { width: 14, height: 14, borderRadius: 3 },
   score: { fontFamily: "monospace", fontSize: 22, fontWeight: "700" },
 });
