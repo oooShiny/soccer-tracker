@@ -195,35 +195,36 @@ export function PlayersScreen() {
           )}
           <Text style={{ textAlign: "center", marginTop: 12, fontSize: 12, color: colors.textMuted }}>{selectedPlayer.gamesPlayed} total appearances</Text>
 
-          {/* Season activity toggle */}
-          {canEdit && activeSeason && (
+          {/* Per-season activity toggles */}
+          {canEdit && seasons.length > 0 && (
             <View style={{ marginTop: 16 }}>
-              <Text style={s.modalLabel}>SEASON STATUS</Text>
-              {(() => {
-                const inactive = isInactiveForSeason(selectedPlayer, activeSeason.id);
+              <Text style={s.modalLabel}>SEASONS</Text>
+              {seasons.map(season => {
+                const inactive = isInactiveForSeason(selectedPlayer, season.id);
                 return (
                   <TouchableOpacity
+                    key={season.id}
                     onPress={async () => {
                       if (!teamId) return;
                       const current = selectedPlayer.inactiveSeasonIds || [];
                       const updated = inactive
-                        ? current.filter(id => id !== activeSeason.id)
-                        : [...current, activeSeason.id];
+                        ? current.filter(id => id !== season.id)
+                        : [...current, season.id];
                       await updatePlayer(teamId, selectedPlayer.id, { inactiveSeasonIds: updated } as any);
                       setSelectedPlayer({ ...selectedPlayer, inactiveSeasonIds: updated });
                     }}
-                    style={[s.statusToggle, inactive ? s.statusInactive : s.statusActive]}
+                    style={[s.statusToggle, inactive ? s.statusInactive : s.statusActive, { marginBottom: 8 }]}
                     activeOpacity={0.7}
                   >
                     <Text style={{ color: inactive ? colors.danger : colors.accent, fontWeight: "600", fontSize: 14 }}>
-                      {inactive ? "❌ Inactive for " : "✅ Active for "}{activeSeason.name}
+                      {inactive ? "❌ Inactive for " : "✅ Active for "}{season.name}{season.status === "Active" ? " (current)" : ""}
                     </Text>
                     <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 2 }}>
-                      Tap to {inactive ? "reactivate" : "mark inactive"}
+                      Tap to {inactive ? "mark active" : "mark inactive"}
                     </Text>
                   </TouchableOpacity>
                 );
-              })()}
+              })}
             </View>
           )}
 
