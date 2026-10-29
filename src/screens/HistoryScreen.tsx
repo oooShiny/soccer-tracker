@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-nati
 import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
 import { useGames, usePlayers } from "../hooks/useFirestore";
-import { computeSeasonRecord, normalizeTime, getResult } from "../services/utils";
+import { computeSeasonRecord, normalizeTime, getResult, isInactiveForGame, isAbsentFromGame } from "../services/utils";
 import { Card, StatBox, Badge } from "../components/SharedUI";
 import { OpponentsSection } from "./OpponentsScreen";
 import type { Game, Player } from "../types";
@@ -52,13 +52,14 @@ function computeAttendance(games: Game[], players: Player[]): AttendanceEntry[] 
   const played = [...games].filter(g => g.ourScore != null).sort((a, b) => a.date.localeCompare(b.date));
   return players.map(p => {
     let attended = 0, missed = 0, longest = 0, temp = 0;
-    for (const g of played) {
-      if ((g.absentPlayerIds || []).includes(p.id)) { missed++; temp = 0; }
+    const eligible = played.filter(g => !isInactiveForGame(g, p));
+    for (const g of eligible) {
+      if (isAbsentFromGame(g, p)) { missed++; temp = 0; }
       else { attended++; temp++; longest = Math.max(longest, temp); }
     }
     let current = 0;
-    for (let i = played.length - 1; i >= 0; i--) {
-      if ((played[i].absentPlayerIds || []).includes(p.id)) break;
+    for (let i = eligible.length - 1; i >= 0; i--) {
+      if (isAbsentFromGame(eligible[i], p)) break;
       current++;
     }
     const totalPlayed = attended + missed;
@@ -90,8 +91,9 @@ function computeAttendanceImpact(games: Game[], players: Player[]): ImpactEntry[
   const played = games.filter(g => g.ourScore != null);
   const results: ImpactEntry[] = [];
   for (const p of players) {
-    const presentGames = played.filter(g => !(g.absentPlayerIds || []).includes(p.id));
-    const missedGames = played.filter(g => (g.absentPlayerIds || []).includes(p.id));
+    const eligible = played.filter(g => !isInactiveForGame(g, p));
+    const presentGames = eligible.filter(g => !isAbsentFromGame(g, p));
+    const missedGames = eligible.filter(g => isAbsentFromGame(g, p));
     if (presentGames.length + missedGames.length === 0) continue;
     results.push({ playerId: p.id, name: p.name, present: splitRecord(presentGames), missed: splitRecord(missedGames) });
   }

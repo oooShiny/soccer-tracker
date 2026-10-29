@@ -4,7 +4,7 @@ import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
 import { useGames, usePlayers, useSeasons, useOpponents } from "../hooks/useFirestore";
 import { createGame, updateGame, deleteGame, findOrCreateOpponent } from "../services/firestore";
-import { formatDate, getResult, getResultColor, normalizeTime, isPlayerAvailableForGame } from "../services/utils";
+import { formatDate, getResult, getResultColor, normalizeTime, isPlayerAvailableForGame, isInactiveForGame, isAbsentFromGame } from "../services/utils";
 import { Badge, StatBox } from "../components/SharedUI";
 import { FormModal, FormInput, FormDateInput, FormTimeInput, FormButtons, NumInput } from "../components/FormComponents";
 import type { Game, GoalEvent, GameScorer, Opponent } from "../types";
@@ -198,7 +198,7 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
     const player = players.find(p => p.id === playerProfileId);
     if (!player) return null;
 
-    const playedGames = allGames.filter(g => g.ourScore != null && !(g.absentPlayerIds || []).includes(playerProfileId));
+    const playedGames = allGames.filter(g => g.ourScore != null && !isAbsentFromGame(g, player) && !isInactiveForGame(g, player));
 
     // Goals per game
     const goalsByGame = playedGames.map(g => {

@@ -3,20 +3,23 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-nati
 import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
 import { useSeasons, useGames, usePlayers } from "../hooks/useFirestore";
-import { formatDate } from "../services/utils";
+import { formatDate, isInactiveForGame, isAbsentFromGame } from "../services/utils";
 import { Card, Badge } from "../components/SharedUI";
 import { useGameEdit } from "../components/GameEditProvider";
-import type { Game, Player } from "../types";
+import type { Game, GoalEvent, Player } from "../types";
 
 const MEDALS = ["#FFD700", "#C0C0C0", "#CD7F32"];
 
-type Category = "totalGoals" | "goalsPerGame" | "bestGame" | "streak" | "keeper";
+type Category = "totalGoals" | "goalsPerGame" | "bestGame" | "streak" | "opening" | "winner" | "equalizer" | "keeper";
 
 const CATEGORIES: { id: Category; label: string; icon: string }[] = [
   { id: "totalGoals", label: "Total Goals", icon: "⚽" },
   { id: "goalsPerGame", label: "Goals/Game", icon: "📊" },
   { id: "bestGame", label: "Best Game", icon: "🏆" },
   { id: "streak", label: "Goal Streaks", icon: "🔥" },
+  { id: "opening", label: "Opening Goals", icon: "🚀" },
+  { id: "winner", label: "Game Winners", icon: "🎯" },
+  { id: "equalizer", label: "Equalizers", icon: "⚖️" },
   { id: "keeper", label: "Goalkeepers", icon: "🧤" },
 ];
 
@@ -31,10 +34,10 @@ function getGamesPlayed(games: Game[], players: Player[]): Record<string, number
   const gp: Record<string, number> = {};
   for (const game of games) {
     if (game.ourScore == null) continue;
-    const absent = game.absentPlayerIds || [];
     for (const p of players) {
       if (p.active === false) continue;
-      if (!absent.includes(p.id)) gp[p.id] = (gp[p.id] || 0) + 1;
+      if (isInactiveForGame(game, p)) continue;
+      if (!isAbsentFromGame(game, p)) gp[p.id] = (gp[p.id] || 0) + 1;
     }
   }
   return gp;
@@ -77,13 +80,66 @@ function computeBestGames(games: Game[], players: Player[]): BestGameEntry[] {
   }).sort((a, b) => b.goals - a.goals || a.date.localeCompare(b.date));
 }
 
+// ─── Clutch goals (derived from goalTimeline) ─────────────────────
+// Only games whose timeline matches the final score are used, so a partial
+// timeline can't attribute a goal to the wrong player.
+type ClutchKind = "opening" | "winner" | "equalizer";
+
+function getCompleteTimeline(game: Game): GoalEvent[] | null {
+  if (game.ourScore == null || game.theirScore == null) return null;
+  const tl = [...(game.goalTimeline || [])].sort((a, b) => a.order - b.order);
+  if (tl.length === 0) return null;
+  const forCount = tl.filter(e => e.type === "for").length;
+  if (forCount !== game.ourScore || tl.length - forCount !== game.theirScore) return null;
+  return tl;
+}
+
+// Returns the player ids credited with a clutch goal in this game
+function getClutchScorers(game: Game, kind: ClutchKind): string[] {
+  const tl = getCompleteTimeline(game);
+  if (!tl) return [];
+  const ids: string[] = [];
+  if (kind === "opening") {
+    if (tl[0].type === "for" && tl[0].playerId) ids.push(tl[0].playerId);
+  } else if (kind === "winner") {
+    // The goal that put us one ahead of the opponent's final tally
+    if (game.ourScore! > game.theirScore!) {
+      let ours = 0;
+      for (const e of tl) {
+        if (e.type !== "for") continue;
+        ours++;
+        if (ours === game.theirScore! + 1) { if (e.playerId) ids.push(e.playerId); break; }
+      }
+    }
+  } else {
+    // Any goal of ours that levelled the score
+    let ours = 0, theirs = 0;
+    for (const e of tl) {
+      if (e.type === "for") ours++; else theirs++;
+      if (e.type === "for" && ours === theirs && e.playerId) ids.push(e.playerId);
+    }
+  }
+  return ids;
+}
+
+interface ClutchEntry { playerId: string; name: string; number: number; count: number; goals: number; }
+function computeClutchGoals(games: Game[], players: Player[], kind: ClutchKind, totalGoals: TotalGoalsEntry[]): ClutchEntry[] {
+  const counts: Record<string, number> = {};
+  for (const game of games) {
+    for (const id of getClutchScorers(game, kind)) counts[id] = (counts[id] || 0) + 1;
+  }
+  return Object.entries(counts).map(([id, count]) => {
+    const p = players.find(pl => pl.id === id);
+    return { playerId: id, name: p?.name || "Unknown", number: p?.number || 0, count, goals: totalGoals.find(e => e.playerId === id)?.goals || count };
+  }).sort((a, b) => b.count - a.count || b.goals - a.goals);
+}
+
 interface StreakEntry { playerId: string; name: string; number: number; longest: number; current: number; }
 function computeStreaks(games: Game[], players: Player[]): StreakEntry[] {
   const sorted = [...games].filter(g => g.ourScore != null).sort((a, b) => a.date.localeCompare(b.date));
   const streakMap: Record<string, { longest: number; current: number; temp: number }> = {};
 
   for (const game of sorted) {
-    const absent = game.absentPlayerIds || [];
     const scoredSet = new Set<string>();
     const tl = game.goalTimeline || [];
     if (tl.length > 0) { for (const e of tl) { if (e.type === "for" && e.playerId) scoredSet.add(e.playerId); } }
@@ -91,7 +147,7 @@ function computeStreaks(games: Game[], players: Player[]): StreakEntry[] {
 
     for (const p of players) {
       if (p.active === false) continue;
-      if (absent.includes(p.id)) continue; // skip absent players
+      if (isAbsentFromGame(game, p) || isInactiveForGame(game, p)) continue; // skip absent/inactive players
       if (!streakMap[p.id]) streakMap[p.id] = { longest: 0, current: 0, temp: 0 };
       if (scoredSet.has(p.id)) {
         streakMap[p.id].temp++;
@@ -108,7 +164,7 @@ function computeStreaks(games: Game[], players: Player[]): StreakEntry[] {
     if (!streakMap[p.id]) continue;
     let current = 0;
     for (const game of reverseSorted) {
-      if ((game.absentPlayerIds || []).includes(p.id)) continue;
+      if (isAbsentFromGame(game, p) || isInactiveForGame(game, p)) continue;
       const scoredSet = new Set<string>();
       const tl = game.goalTimeline || [];
       if (tl.length > 0) { for (const e of tl) { if (e.type === "for" && e.playerId) scoredSet.add(e.playerId); } }
@@ -172,6 +228,9 @@ export function LeaderboardScreen() {
   const totalGoals = useMemo(() => computeTotalGoals(scopeGames, players), [scopeGames, players]);
   const bestGames = useMemo(() => computeBestGames(scopeGames, players), [scopeGames, players]);
   const streaks = useMemo(() => computeStreaks(scopeGames, players), [scopeGames, players]);
+  const opening = useMemo(() => computeClutchGoals(scopeGames, players, "opening", totalGoals), [scopeGames, players, totalGoals]);
+  const winners = useMemo(() => computeClutchGoals(scopeGames, players, "winner", totalGoals), [scopeGames, players, totalGoals]);
+  const equalizers = useMemo(() => computeClutchGoals(scopeGames, players, "equalizer", totalGoals), [scopeGames, players, totalGoals]);
   const keepers = useMemo(() => computeKeeperLeaderboard(scopeGames, players), [scopeGames, players]);
 
   const isDeactivated = (playerId: string) => scope === "alltime" && players.find(p => p.id === playerId)?.active === false;
@@ -332,6 +391,34 @@ export function LeaderboardScreen() {
         </>
       )}
 
+      {/* ─── Clutch goals ─────────────────────────────────────── */}
+      {(category === "opening" || category === "winner" || category === "equalizer") && (() => {
+        const cfg = {
+          opening: { entries: opening, suffix: "opening goals", blurb: "First goal of the game.", empty: "No opening goals recorded yet." },
+          winner: { entries: winners, suffix: "game winners", blurb: "The goal that put us ahead for good in a win.", empty: "No game-winning goals recorded yet." },
+          equalizer: { entries: equalizers, suffix: "equalizers", blurb: "Goals that tied the game after we were trailing.", empty: "No equalizers recorded yet." },
+        }[category];
+        return (
+          <>
+            <Podium entries={cfg.entries} valueKey="count" valueSuffix={cfg.suffix} />
+            <Text style={st.blurb}>{cfg.blurb} Only games with a complete goal timeline are counted.</Text>
+            <View style={st.tableHeader}>
+              <Text style={[st.tableCol, { width: 28 }]}>#</Text>
+              <Text style={[st.tableCol, { flex: 1 }]}>Player</Text>
+              <Text style={[st.tableCol, st.numCol]}>Count</Text>
+              <Text style={[st.tableCol, st.numCol]}>G</Text>
+            </View>
+            {cfg.entries.map((e, i) => (
+              <Row key={e.playerId} entry={e} i={i}>
+                <Text style={[st.mono, st.numCol, { color: colors.accent, fontWeight: "700" }]}>{e.count}</Text>
+                <Text style={[st.mono, st.numCol, { color: colors.textMuted }]}>{e.goals}</Text>
+              </Row>
+            ))}
+            {cfg.entries.length === 0 && <Card><Text style={st.empty}>{cfg.empty}</Text></Card>}
+          </>
+        );
+      })()}
+
       {/* ─── Goalkeepers ──────────────────────────────────────── */}
       {category === "keeper" && (
         <>
@@ -384,5 +471,6 @@ const st = StyleSheet.create({
   tableCol: { fontSize: 11, fontWeight: "600", color: colors.textDim, letterSpacing: 1 },
   numCol: { width: 48, textAlign: "center" },
   mono: { fontFamily: "monospace", fontSize: 13 },
+  blurb: { fontSize: 11, color: colors.textDim, textAlign: "center", marginBottom: spacing.sm },
   empty: { color: colors.textDim, textAlign: "center" },
 });

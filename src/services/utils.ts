@@ -1,5 +1,14 @@
 import type { StandingsRow, Game, GameResult, Player } from "../types";
 
+// ─── Player availability ──────────────────────────────────────────
+// Player wasn't on the roster for the game's season at all
+export const isInactiveForGame = (g: Game, p: Player): boolean =>
+  (p.inactiveSeasonIds || []).includes(g.seasonId);
+
+// Player was on the roster but didn't play
+export const isAbsentFromGame = (g: Game, p: Player): boolean =>
+  (g.absentPlayerIds || []).includes(p.id);
+
 // ─── Standings ────────────────────────────────────────────────────
 export const calcPoints = (row: StandingsRow): number => row.w * 3 + row.d;
 
