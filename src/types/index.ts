@@ -34,6 +34,8 @@ export interface Season {
   result: SeasonResult;
   standings: StandingsRow[];
   createdAt: Date;
+  dashTeamId?: number;      // DaySmart team id; enables schedule/standings sync
+  dashLastSyncAt?: string;  // ISO timestamp of last successful sync
 }
 
 export interface KeeperAppearance {
@@ -68,6 +70,7 @@ export interface Game {
   time: string; // e.g. "8:30 PM" or ""
   opponent: string;
   opponentId?: string;        // references opponents collection
+  dashEventId?: number;       // DaySmart event id (set by schedule sync)
   ourScore: number | null;
   theirScore: number | null;
   scorers: GameScorer[];       // legacy / computed from goalTimeline

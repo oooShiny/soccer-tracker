@@ -2,8 +2,10 @@ import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform } from "react-native";
 import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
-import { useSeasons, useMembers } from "../hooks/useFirestore";
-import { createInvite, deleteInvite, updateMemberRole, removeMember, subscribeToInvites, type Invite } from "../services/firestore";
+import { useSeasons, useMembers, useGames } from "../hooks/useFirestore";
+import { previewDashSync, applyDashSync } from "../services/dashSync";
+import type { SyncPlan } from "../services/dash";
+import { updateSeason, createInvite, deleteInvite, updateMemberRole, removeMember, subscribeToInvites, type Invite } from "../services/firestore";
 import { Card, Badge, SectionHeader } from "../components/SharedUI";
 import { FormModal, FormInput, FormPicker, FormButtons } from "../components/FormComponents";
 import type { UserRole } from "../types";
@@ -27,6 +29,11 @@ export function SettingsScreen() {
   const { user, role, signOut, isAdmin, teamId } = useAuth();
   const { data: seasons } = useSeasons(teamId);
   const { data: members } = useMembers(teamId);
+  const { data: games } = useGames(teamId);
+  const [dashInput, setDashInput] = useState("");
+  const [dashBusy, setDashBusy] = useState(false);
+  const [dashPlan, setDashPlan] = useState<SyncPlan | null>(null);
+  const [dashMsg, setDashMsg] = useState<string | null>(null);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -44,6 +51,39 @@ export function SettingsScreen() {
     const unsub = subscribeToInvites(teamId, setInvites);
     return unsub;
   }, [teamId]);
+
+  const dashSeason = activeSeason;
+
+  const handleSaveDashId = async () => {
+    if (!teamId || !dashSeason) return;
+    const id = parseInt(dashInput.trim(), 10);
+    if (!id) { setDashMsg("Enter the numeric team ID from the DaySmart team URL."); return; }
+    setDashBusy(true); setDashMsg(null);
+    try {
+      await updateSeason(teamId, dashSeason.id, { dashTeamId: id });
+      setDashInput("");
+    } catch (err: any) { setDashMsg(err?.message || "Failed to save."); }
+    setDashBusy(false);
+  };
+
+  const handleDashPreview = async () => {
+    if (!dashSeason) return;
+    setDashBusy(true); setDashMsg(null); setDashPlan(null);
+    try { setDashPlan(await previewDashSync(dashSeason, games)); }
+    catch (err: any) { setDashMsg(err?.message || "Sync failed."); }
+    setDashBusy(false);
+  };
+
+  const handleDashApply = async () => {
+    if (!teamId || !user || !dashSeason || !dashPlan) return;
+    setDashBusy(true);
+    try {
+      await applyDashSync(teamId, dashSeason, dashPlan, user.uid);
+      setDashMsg(`Synced: ${dashPlan.creates.length} added, ${dashPlan.updates.length} updated, standings refreshed.`);
+      setDashPlan(null);
+    } catch (err: any) { setDashMsg(err?.message || "Sync failed."); }
+    setDashBusy(false);
+  };
 
   const handleInvite = async () => {
     if (!teamId || !user || !inviteEmail.trim()) {
@@ -130,6 +170,54 @@ export function SettingsScreen() {
           <Text style={s.teamName}>{season.teamName}</Text>
         </Card>
       ))}
+
+      {/* DaySmart sync */}
+      {isAdmin && dashSeason && (
+        <>
+          <SectionHeader>DAYSMART SYNC</SectionHeader>
+          <Card>
+            <Text style={s.subText}>
+              Pulls schedule, scores and standings for {dashSeason.name} from NHsportsplex (DaySmart). Existing scores are never overwritten.
+            </Text>
+            {dashSeason.dashTeamId ? (
+              <>
+                <Text style={{ color: colors.text, fontSize: 14, marginBottom: 4 }}>DaySmart team ID: {dashSeason.dashTeamId}</Text>
+                {dashSeason.dashLastSyncAt && (
+                  <Text style={s.subText}>Last synced {new Date(dashSeason.dashLastSyncAt).toLocaleString()}</Text>
+                )}
+                {!dashPlan && (
+                  <TouchableOpacity onPress={handleDashPreview} disabled={dashBusy} style={s.copyBtn}>
+                    <Text style={s.copyBtnText}>{dashBusy ? "Checking…" : "🔄 Check for changes"}</Text>
+                  </TouchableOpacity>
+                )}
+                {dashPlan && (
+                  <View>
+                    <Text style={{ color: colors.text, fontSize: 14, marginBottom: 8 }}>
+                      {dashPlan.teamName}: {dashPlan.creates.length} new game(s), {dashPlan.updates.length} update(s), {dashPlan.unchanged} unchanged{dashPlan.adoptedPlaceholders ? ` (${dashPlan.adoptedPlaceholders} empty TBD slots will be filled in)` : ""}{dashPlan.leftoverPlaceholders ? `; ${dashPlan.leftoverPlaceholders} TBD slot(s) have no DaySmart match and are left alone` : ""}. Standings for {dashPlan.standings.length} teams will be replaced.
+                    </Text>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <TouchableOpacity onPress={handleDashApply} disabled={dashBusy} style={s.copyBtn}>
+                        <Text style={s.copyBtnText}>{dashBusy ? "Applying…" : "Apply"}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => setDashPlan(null)} style={{ padding: 10 }}>
+                        <Text style={{ color: colors.textMuted, fontSize: 13 }}>Cancel</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </>
+            ) : (
+              <>
+                <FormInput label="DaySmart team ID" value={dashInput} onChangeText={setDashInput} placeholder="e.g. 20140 (from …/teams/20140)" keyboardType="numeric" />
+                <TouchableOpacity onPress={handleSaveDashId} disabled={dashBusy} style={s.copyBtn}>
+                  <Text style={s.copyBtnText}>Save</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            {dashMsg && <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 10 }}>{dashMsg}</Text>}
+          </Card>
+        </>
+      )}
 
       {/* Members */}
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
