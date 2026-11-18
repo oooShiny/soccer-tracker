@@ -200,3 +200,19 @@ export function computeKeeperLeaderboard(games: Game[], players: Player[]): Keep
 // Fractional keeper games: whole numbers as-is, otherwise one decimal (e.g. 3.5)
 export const formatKeeperGames = (apps: number): string =>
   Number.isInteger(apps) ? String(apps) : apps.toFixed(1);
+
+// ─── Career Field Stats ───────────────────────────────────────────
+// All-time goals and games played per player, computed from game results.
+// A player counts as having played a game unless they were absent or inactive that season.
+export const computeCareerStats = (games: Game[], players: Player[]): Record<string, { goals: number; gp: number }> => {
+  const out: Record<string, { goals: number; gp: number }> = {};
+  for (const p of players) out[p.id] = { goals: 0, gp: 0 };
+  for (const g of games) {
+    if (g.ourScore == null) continue;
+    for (const p of players) if (!isInactiveForGame(g, p) && !isAbsentFromGame(g, p)) out[p.id].gp++;
+    const tl = g.goalTimeline || [];
+    if (tl.length > 0) { for (const e of tl) if (e.type === "for" && e.playerId && out[e.playerId]) out[e.playerId].goals++; }
+    else { for (const sc of g.scorers || []) if (out[sc.playerId]) out[sc.playerId].goals += sc.goals; }
+  }
+  return out;
+};
