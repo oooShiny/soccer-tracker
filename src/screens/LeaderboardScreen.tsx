@@ -30,12 +30,13 @@ function getPlayerGoalsInGame(game: Game, playerId: string): number {
   return (game.scorers || []).find(s => s.playerId === playerId)?.goals || 0;
 }
 
-function getGamesPlayed(games: Game[], players: Player[], skipDeactivated = true): Record<string, number> {
+// Counts every player, including deactivated ones: their goals still appear in the
+// tables, so their real GP is needed for goals/game.
+function getGamesPlayed(games: Game[], players: Player[]): Record<string, number> {
   const gp: Record<string, number> = {};
   for (const game of games) {
     if (game.ourScore == null) continue;
     for (const p of players) {
-      if (skipDeactivated && p.active === false) continue;
       if (isInactiveForGame(game, p)) continue;
       if (!isAbsentFromGame(game, p)) gp[p.id] = (gp[p.id] || 0) + 1;
     }
@@ -44,9 +45,9 @@ function getGamesPlayed(games: Game[], players: Player[], skipDeactivated = true
 }
 
 interface TotalGoalsEntry { playerId: string; name: string; number: number; goals: number; games: number; perGame: number; }
-function computeTotalGoals(games: Game[], players: Player[], skipDeactivated = true): TotalGoalsEntry[] {
+function computeTotalGoals(games: Game[], players: Player[]): TotalGoalsEntry[] {
   const goalMap: Record<string, number> = {};
-  const gp = getGamesPlayed(games, players, skipDeactivated);
+  const gp = getGamesPlayed(games, players);
   for (const game of games) {
     if (game.ourScore == null) continue;
     const tl = game.goalTimeline || [];
@@ -185,7 +186,7 @@ function computeStreaks(games: Game[], players: Player[], skipDeactivated = true
 
 // ─── Leaderboard content (category tabs + tables) ─────────────────
 // Shared by the Leaders tab and the completed-season view.
-// `skipDeactivated` excludes currently-deactivated players from GP/streaks
+// `skipDeactivated` excludes currently-deactivated players from streaks
 // (used for the current season); `markDeactivated` badges them (all-time view).
 export function LeaderboardContent({ games, players, skipDeactivated = true, markDeactivated = false }: {
   games: Game[]; players: Player[]; skipDeactivated?: boolean; markDeactivated?: boolean;
@@ -193,7 +194,7 @@ export function LeaderboardContent({ games, players, skipDeactivated = true, mar
   const { viewPlayer } = useGameEdit();
   const [category, setCategory] = useState<Category>("totalGoals");
 
-  const totalGoals = useMemo(() => computeTotalGoals(games, players, skipDeactivated), [games, players, skipDeactivated]);
+  const totalGoals = useMemo(() => computeTotalGoals(games, players), [games, players]);
   const bestGames = useMemo(() => computeBestGames(games, players), [games, players]);
   const streaks = useMemo(() => computeStreaks(games, players, skipDeactivated), [games, players, skipDeactivated]);
   const opening = useMemo(() => computeClutchGoals(games, players, "opening", totalGoals), [games, players, totalGoals]);
