@@ -305,7 +305,7 @@ export function LeaderboardContent({ games, players, skipDeactivated = true, mar
       {category === "goalsPerGame" && (
         <>
           {(() => {
-            const sorted = [...totalGoals].filter(e => e.games >= 2).sort((a, b) => b.perGame - a.perGame);
+            const sorted = [...totalGoals].sort((a, b) => b.perGame - a.perGame || b.goals - a.goals);
             return (
               <>
                 <Podium entries={sorted} valueKey="perGame" valueSuffix="per game" />
@@ -323,7 +323,7 @@ export function LeaderboardContent({ games, players, skipDeactivated = true, mar
                     <Text style={[st.mono, st.numCol, { color: colors.textDim }]}>{e.games}</Text>
                   </Row>
                 ))}
-                {sorted.length === 0 && <Card><Text style={st.empty}>Need at least 2 games played to qualify.</Text></Card>}
+                {sorted.length === 0 && <Card><Text style={st.empty}>No goals recorded yet.</Text></Card>}
               </>
             );
           })()}
