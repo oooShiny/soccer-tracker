@@ -2,12 +2,13 @@ import React, { useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
 import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
-import { useSeasons, useGames } from "../hooks/useFirestore";
+import { useSeasons, useGames, usePlayers } from "../hooks/useFirestore";
 import { createSeason, updateSeason, updateStandings, createGame } from "../services/firestore";
 import { sortStandings, getOurPosition, positionSuffix, computeSeasonRecord } from "../services/utils";
 import { Card, Badge, StatBox, SectionHeader, StandingsTable } from "../components/SharedUI";
 import { GameCard } from "../components/GameCard";
 import { useGameEdit } from "../components/GameEditProvider";
+import { LeaderboardContent } from "./LeaderboardScreen";
 import { FormModal, FormInput, FormDateInput, FormPicker, FormButtons, NumInput } from "../components/FormComponents";
 import type { Season, StandingsRow } from "../types";
 
@@ -32,6 +33,7 @@ export function SeasonsScreen() {
   const { teamId, canEdit, isAdmin, user } = useAuth();
   const { data: seasons } = useSeasons(teamId);
   const { data: games } = useGames(teamId);
+  const { data: players } = usePlayers(teamId);
   const { newGame } = useGameEdit();
   const [selectedSeason, setSelectedSeason] = useState<Season | null>(null);
   const [editingStandings, setEditingStandings] = useState(false);
@@ -163,6 +165,14 @@ export function SeasonsScreen() {
           {canEdit && <TouchableOpacity onPress={() => openStandingsEdit(selectedSeason)} style={st.editSmallBtn}><Text style={st.editSmallText}>Edit Table</Text></TouchableOpacity>}
         </View>
         <StandingsTable standings={selectedSeason.standings} teamName={selectedSeason.teamName} />
+
+        {selectedSeason.status === "Completed" && (
+          <>
+            <View style={{ marginTop: spacing.md }}><SectionHeader>SEASON LEADERS</SectionHeader></View>
+            {/* Past season: count everyone who played, even if since deactivated */}
+            <LeaderboardContent games={seasonGames} players={players} skipDeactivated={false} />
+          </>
+        )}
 
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: spacing.md }}>
           <SectionHeader>RESULTS</SectionHeader>

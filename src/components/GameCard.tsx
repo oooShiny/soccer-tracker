@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from "react-native";
 import { colors, radii } from "../theme";
 import { formatDate, getResult, getResultColor } from "../services/utils";
 import { Card, Badge } from "./SharedUI";
@@ -15,6 +15,8 @@ export function GameCard({ game }: { game: Game }) {
   const played = game.ourScore != null;
   const goals = [...(game.goalTimeline || [])].sort((a, b) => a.order - b.order);
   const multi = (game.keeperAppearances?.length || 0) > 1;
+  const { width } = useWindowDimensions();
+  const showTimeline = width >= 600; // scoring dots don't fit on phone-width screens
 
   return (
     <TouchableOpacity onPress={() => played ? viewGame(game) : canEdit ? editGame(game) : null} activeOpacity={0.7}>
@@ -33,7 +35,7 @@ export function GameCard({ game }: { game: Game }) {
               </View>
             </View>
           </View>
-          {goals.length > 0 && (
+          {showTimeline && goals.length > 0 && (
             <View style={s.timeline}>
               {goals.map((g, i) => (
                 <View key={i} style={[s.goalSquare, { backgroundColor: g.type === "for" ? colors.accent : colors.danger }]} />

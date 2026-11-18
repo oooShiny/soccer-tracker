@@ -30,12 +30,12 @@ function getPlayerGoalsInGame(game: Game, playerId: string): number {
   return (game.scorers || []).find(s => s.playerId === playerId)?.goals || 0;
 }
 
-function getGamesPlayed(games: Game[], players: Player[]): Record<string, number> {
+function getGamesPlayed(games: Game[], players: Player[], skipDeactivated = true): Record<string, number> {
   const gp: Record<string, number> = {};
   for (const game of games) {
     if (game.ourScore == null) continue;
     for (const p of players) {
-      if (p.active === false) continue;
+      if (skipDeactivated && p.active === false) continue;
       if (isInactiveForGame(game, p)) continue;
       if (!isAbsentFromGame(game, p)) gp[p.id] = (gp[p.id] || 0) + 1;
     }
@@ -44,9 +44,9 @@ function getGamesPlayed(games: Game[], players: Player[]): Record<string, number
 }
 
 interface TotalGoalsEntry { playerId: string; name: string; number: number; goals: number; games: number; perGame: number; }
-function computeTotalGoals(games: Game[], players: Player[]): TotalGoalsEntry[] {
+function computeTotalGoals(games: Game[], players: Player[], skipDeactivated = true): TotalGoalsEntry[] {
   const goalMap: Record<string, number> = {};
-  const gp = getGamesPlayed(games, players);
+  const gp = getGamesPlayed(games, players, skipDeactivated);
   for (const game of games) {
     if (game.ourScore == null) continue;
     const tl = game.goalTimeline || [];
@@ -135,7 +135,7 @@ function computeClutchGoals(games: Game[], players: Player[], kind: ClutchKind, 
 }
 
 interface StreakEntry { playerId: string; name: string; number: number; longest: number; current: number; }
-function computeStreaks(games: Game[], players: Player[]): StreakEntry[] {
+function computeStreaks(games: Game[], players: Player[], skipDeactivated = true): StreakEntry[] {
   const sorted = [...games].filter(g => g.ourScore != null).sort((a, b) => a.date.localeCompare(b.date));
   const streakMap: Record<string, { longest: number; current: number; temp: number }> = {};
 
@@ -146,7 +146,7 @@ function computeStreaks(games: Game[], players: Player[]): StreakEntry[] {
     else { for (const sc of game.scorers) scoredSet.add(sc.playerId); }
 
     for (const p of players) {
-      if (p.active === false) continue;
+      if (skipDeactivated && p.active === false) continue;
       if (isAbsentFromGame(game, p) || isInactiveForGame(game, p)) continue; // skip absent/inactive players
       if (!streakMap[p.id]) streakMap[p.id] = { longest: 0, current: 0, temp: 0 };
       if (scoredSet.has(p.id)) {
@@ -212,28 +212,25 @@ function computeKeeperLeaderboard(games: Game[], players: Player[]): KeeperEntry
   }).sort((a, b) => b.cleanSheets - a.cleanSheets || a.gaPerApp - b.gaPerApp);
 }
 
-// ─── Component ────────────────────────────────────────────────────
-export function LeaderboardScreen() {
-  const { teamId } = useAuth();
-  const { data: seasons } = useSeasons(teamId);
-  const { data: allGames } = useGames(teamId);
-  const { data: players } = usePlayers(teamId);
+// ─── Leaderboard content (category tabs + tables) ─────────────────
+// Shared by the Leaders tab and the completed-season view.
+// `skipDeactivated` excludes currently-deactivated players from GP/streaks
+// (used for the current season); `markDeactivated` badges them (all-time view).
+export function LeaderboardContent({ games, players, skipDeactivated = true, markDeactivated = false }: {
+  games: Game[]; players: Player[]; skipDeactivated?: boolean; markDeactivated?: boolean;
+}) {
   const { viewPlayer } = useGameEdit();
-  const [scope, setScope] = useState<"season" | "alltime">("season");
   const [category, setCategory] = useState<Category>("totalGoals");
 
-  const activeSeason = seasons.find(s => s.status === "Active");
-  const scopeGames = scope === "season" ? allGames.filter(g => g.seasonId === activeSeason?.id) : allGames;
+  const totalGoals = useMemo(() => computeTotalGoals(games, players, skipDeactivated), [games, players, skipDeactivated]);
+  const bestGames = useMemo(() => computeBestGames(games, players), [games, players]);
+  const streaks = useMemo(() => computeStreaks(games, players, skipDeactivated), [games, players, skipDeactivated]);
+  const opening = useMemo(() => computeClutchGoals(games, players, "opening", totalGoals), [games, players, totalGoals]);
+  const winners = useMemo(() => computeClutchGoals(games, players, "winner", totalGoals), [games, players, totalGoals]);
+  const equalizers = useMemo(() => computeClutchGoals(games, players, "equalizer", totalGoals), [games, players, totalGoals]);
+  const keepers = useMemo(() => computeKeeperLeaderboard(games, players), [games, players]);
 
-  const totalGoals = useMemo(() => computeTotalGoals(scopeGames, players), [scopeGames, players]);
-  const bestGames = useMemo(() => computeBestGames(scopeGames, players), [scopeGames, players]);
-  const streaks = useMemo(() => computeStreaks(scopeGames, players), [scopeGames, players]);
-  const opening = useMemo(() => computeClutchGoals(scopeGames, players, "opening", totalGoals), [scopeGames, players, totalGoals]);
-  const winners = useMemo(() => computeClutchGoals(scopeGames, players, "winner", totalGoals), [scopeGames, players, totalGoals]);
-  const equalizers = useMemo(() => computeClutchGoals(scopeGames, players, "equalizer", totalGoals), [scopeGames, players, totalGoals]);
-  const keepers = useMemo(() => computeKeeperLeaderboard(scopeGames, players), [scopeGames, players]);
-
-  const isDeactivated = (playerId: string) => scope === "alltime" && players.find(p => p.id === playerId)?.active === false;
+  const isDeactivated = (playerId: string) => markDeactivated && players.find(p => p.id === playerId)?.active === false;
 
   const Podium = ({ entries, valueKey, valueSuffix }: { entries: { playerId: string; name: string; [k: string]: any }[]; valueKey: string; valueSuffix?: string }) => (
     entries.length > 0 ? (
@@ -270,19 +267,7 @@ export function LeaderboardScreen() {
   );
 
   return (
-    <ScrollView style={st.container}>
-      <Text style={st.header}>LEADERBOARD</Text>
-
-      {/* Scope */}
-      <View style={st.toggleRow}>
-        <TouchableOpacity onPress={() => setScope("season")} style={[st.toggleBtn, scope === "season" && st.toggleActive]}>
-          <Text style={[st.toggleText, scope === "season" && st.toggleTextActive]}>This Season</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => setScope("alltime")} style={[st.toggleBtn, scope === "alltime" && st.toggleActive]}>
-          <Text style={[st.toggleText, scope === "alltime" && st.toggleTextActive]}>All Time</Text>
-        </TouchableOpacity>
-      </View>
-
+    <>
       {/* Category tabs */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.md }}>
         <View style={{ flexDirection: "row", gap: 6 }}>
@@ -442,6 +427,40 @@ export function LeaderboardScreen() {
           {keepers.length === 0 && <Card><Text style={st.empty}>No goalkeeper data yet.</Text></Card>}
         </>
       )}
+
+    </>
+  );
+}
+
+// ─── Screen ───────────────────────────────────────────────────────
+export function LeaderboardScreen() {
+  const { teamId } = useAuth();
+  const { data: seasons } = useSeasons(teamId);
+  const { data: allGames } = useGames(teamId);
+  const { data: players } = usePlayers(teamId);
+  const [scope, setScope] = useState<"season" | "alltime">("season");
+
+  const activeSeason = seasons.find(s => s.status === "Active");
+  const scopeGames = useMemo(
+    () => scope === "season" ? allGames.filter(g => g.seasonId === activeSeason?.id) : allGames,
+    [scope, allGames, activeSeason?.id],
+  );
+
+  return (
+    <ScrollView style={st.container}>
+      <Text style={st.header}>LEADERBOARD</Text>
+
+      {/* Scope */}
+      <View style={st.toggleRow}>
+        <TouchableOpacity onPress={() => setScope("season")} style={[st.toggleBtn, scope === "season" && st.toggleActive]}>
+          <Text style={[st.toggleText, scope === "season" && st.toggleTextActive]}>This Season</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setScope("alltime")} style={[st.toggleBtn, scope === "alltime" && st.toggleActive]}>
+          <Text style={[st.toggleText, scope === "alltime" && st.toggleTextActive]}>All Time</Text>
+        </TouchableOpacity>
+      </View>
+
+      <LeaderboardContent games={scopeGames} players={players} markDeactivated={scope === "alltime"} />
 
       <View style={{ height: 40 }} />
     </ScrollView>

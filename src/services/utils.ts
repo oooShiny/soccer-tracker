@@ -128,3 +128,42 @@ export const getRecentForm = (games: Game[], count: number = 5): GameResult[] =>
     .filter((g) => g.ourScore != null)
     .slice(-count)
     .map(getResult);
+
+// ─── Live Game Detection ──────────────────────────────────────────
+// A game counts as "live" from shortly before kickoff until it should be over.
+const LIVE_BEFORE_MIN = 15;
+const LIVE_AFTER_MIN = 90;
+
+const parseTimeToMinutes = (time: string): number | null => {
+  const m = normalizeTime(time).match(/^(\d{1,2}):(\d{2}) (AM|PM)$/);
+  if (!m) return null;
+  let h = parseInt(m[1]) % 12;
+  if (m[3] === "PM") h += 12;
+  return h * 60 + parseInt(m[2]);
+};
+
+const localIsoDate = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+export const isGameLive = (game: Game, now: Date = new Date()): boolean => {
+  if (game.date !== localIsoDate(now)) return false;
+  const start = parseTimeToMinutes(game.time);
+  if (start == null) return false;
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  return nowMin >= start - LIVE_BEFORE_MIN && nowMin <= start + LIVE_AFTER_MIN;
+};
+
+// ─── Player Display Names ─────────────────────────────────────────
+// First names only, adding the last-name initial when two players share a first name.
+export const buildShortNames = (players: Player[]): Record<string, string> => {
+  const first = (p: Player) => p.name.trim().split(/\s+/)[0];
+  const counts: Record<string, number> = {};
+  for (const p of players) { const f = first(p).toLowerCase(); counts[f] = (counts[f] || 0) + 1; }
+  const out: Record<string, string> = {};
+  for (const p of players) {
+    const parts = p.name.trim().split(/\s+/);
+    const f = parts[0];
+    out[p.id] = counts[f.toLowerCase()] > 1 && parts.length > 1 ? `${f} ${parts[parts.length - 1][0]}.` : f;
+  }
+  return out;
+};

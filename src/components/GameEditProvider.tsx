@@ -1,10 +1,10 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput } from "react-native";
 import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
 import { useGames, usePlayers, useSeasons, useOpponents } from "../hooks/useFirestore";
 import { createGame, updateGame, deleteGame, findOrCreateOpponent } from "../services/firestore";
-import { formatDate, getResult, getResultColor, normalizeTime, isPlayerAvailableForGame, isInactiveForGame, isAbsentFromGame } from "../services/utils";
+import { formatDate, getResult, getResultColor, normalizeTime, isPlayerAvailableForGame, isInactiveForGame, isAbsentFromGame, isGameLive, buildShortNames } from "../services/utils";
 import { Badge, StatBox } from "../components/SharedUI";
 import { FormModal, FormInput, FormDateInput, FormTimeInput, FormButtons, NumInput } from "../components/FormComponents";
 import type { Game, GoalEvent, GameScorer, Opponent } from "../types";
@@ -117,11 +117,47 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
   const [formSeasonId, setFormSeasonId] = useState<string | null>(null);
   const [playerProfileId, setPlayerProfileId] = useState<string | null>(null);
 
-  const keeperEligible = players.filter(p => p.canPlayKeeper && isPlayerAvailableForGame(p, form.date));
+  // Live-game mode: edits auto-save and the date/time/opponent fields are collapsed
+  const [liveMode, setLiveMode] = useState(false);
+  const [showDetails, setShowDetails] = useState(true);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "pending" | "saving" | "saved" | "error">("idle");
+  const lastSavedRef = useRef<string>("");
+
+  // Roster for the form: players active in this game's season (and not deactivated
+  // before the game date), plus anyone already referenced so existing data stays editable.
+  const roster = useMemo(() => {
+    const referenced = new Set<string>([
+      ...form.goalTimeline.flatMap(e => [e.playerId, e.keeperId]).filter((id): id is string => !!id),
+      ...form.keeperAppearances.map(k => k.playerId),
+      ...form.absentPlayerIds,
+    ]);
+    return players.filter(p => referenced.has(p.id) || (
+      isPlayerAvailableForGame(p, form.date) && !(formSeasonId && (p.inactiveSeasonIds || []).includes(formSeasonId))
+    ));
+  }, [players, form.goalTimeline, form.keeperAppearances, form.absentPlayerIds, form.date, formSeasonId]);
+  const shortNames = useMemo(() => buildShortNames(roster), [roster]);
+  const shortName = (id?: string | null) => (id && (shortNames[id] || players.find(p => p.id === id)?.name.split(" ")[0])) || "?";
+
+  const keeperEligible = roster.filter(p => p.canPlayKeeper);
 
   const viewGame = (game: Game) => setSelectedGame(game);
-  const editGame = (game: Game) => { setEditingGame(game); setForm(gameToForm(game)); setFormSeasonId(game.seasonId); setShowForm(true); setSelectedGame(null); };
-  const newGame = (seasonId: string) => { setEditingGame(null); setForm(emptyForm()); setFormSeasonId(seasonId); setShowForm(true); };
+  const editGame = (game: Game) => {
+    const f = gameToForm(game);
+    const live = isGameLive(game);
+    setEditingGame(game); setForm(f); setFormSeasonId(game.seasonId); setShowForm(true); setSelectedGame(null);
+    setLiveMode(live); setShowDetails(!live); setSaveStatus("idle");
+    lastSavedRef.current = JSON.stringify(f);
+  };
+  const newGame = (seasonId: string) => { setEditingGame(null); setForm(emptyForm()); setFormSeasonId(seasonId); setShowForm(true); setLiveMode(false); setShowDetails(true); };
+
+  // On app open, jump straight into editing a game that's currently being played
+  const autoOpenChecked = useRef(false);
+  useEffect(() => {
+    if (autoOpenChecked.current || !canEdit || allGames.length === 0) return;
+    autoOpenChecked.current = true;
+    const live = allGames.find(g => isGameLive(g));
+    if (live) editGame(live);
+  }, [allGames, canEdit]);
   const viewPlayer = (playerId: string) => { setPlayerProfileId(playerId); setSelectedGame(null); };
 
   // Current keeper from appearances (first one for simplicity, or could track active)
@@ -156,33 +192,64 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
 
   const scores = timelineScores(form.goalTimeline);
 
-  const handleSave = async () => {
+  const persistForm = async (f: GameForm) => {
     if (!teamId || !user || !formSeasonId) return;
+    const gaMap = timelineKeeperGA(f.goalTimeline);
+    const sc = timelineScores(f.goalTimeline);
+    const hasGoals = f.goalTimeline.length > 0;
+    const opponentName = f.opponent.trim();
+    // Reuse the existing opponent link when the name hasn't changed (avoids a lookup on every auto-save)
+    const opponentId = !opponentName ? undefined
+      : editingGame?.opponentId && editingGame.opponent === opponentName ? editingGame.opponentId
+      : await findOrCreateOpponent(teamId, opponentName);
+    const data = {
+      seasonId: formSeasonId, date: f.date, time: normalizeTime(f.time), opponent: opponentName, opponentId, notes: f.notes,
+      isPlayoff: f.isPlayoff,
+      ourScore: hasGoals ? sc.ourScore : null, theirScore: hasGoals ? sc.theirScore : null,
+      goalTimeline: f.goalTimeline,
+      scorers: timelineToScorers(f.goalTimeline),
+      assists: [],
+      keeperAppearances: f.keeperAppearances.filter(k => k.playerId).map(k => ({
+        playerId: k.playerId,
+        pct: parseInt(k.pct) || 100,
+        minutes: 0, // kept for compat
+        goalsAgainst: gaMap[k.playerId] || 0, saves: parseInt(k.saves) || 0,
+      })),
+      absentPlayerIds: f.absentPlayerIds,
+    };
+    if (editingGame) await updateGame(teamId, editingGame.id, data, user.uid);
+    else await createGame(teamId, data as any, user.uid);
+  };
+
+  const handleSave = async () => {
     setSaving(true);
-    try {
-      const gaMap = timelineKeeperGA(form.goalTimeline);
-      const normalizedTime = normalizeTime(form.time);
-      const opponentId = form.opponent.trim() ? await findOrCreateOpponent(teamId, form.opponent) : undefined;
-      const data = {
-        seasonId: formSeasonId, date: form.date, time: normalizedTime, opponent: form.opponent.trim(), opponentId, notes: form.notes,
-        isPlayoff: form.isPlayoff,
-        ourScore: scores.ourScore || null, theirScore: scores.theirScore || null,
-        goalTimeline: form.goalTimeline,
-        scorers: timelineToScorers(form.goalTimeline),
-        assists: [],
-        keeperAppearances: form.keeperAppearances.filter(k => k.playerId).map(k => ({
-          playerId: k.playerId,
-          pct: parseInt(k.pct) || 100,
-          minutes: 0, // kept for compat
-          goalsAgainst: gaMap[k.playerId] || 0, saves: parseInt(k.saves) || 0,
-        })),
-        absentPlayerIds: form.absentPlayerIds,
-      };
-      if (editingGame) await updateGame(teamId, editingGame.id, data, user.uid);
-      else await createGame(teamId, data as any, user.uid);
-      setShowForm(false);
-    } catch (err) { console.error(err); }
+    try { await persistForm(form); setShowForm(false); } catch (err) { console.error(err); }
     setSaving(false);
+  };
+
+  // ─── Auto-save (live games) ────────────────────────────────────
+  const autoSave = liveMode && !!editingGame && canEdit;
+  const autoSaveNow = async (f: GameForm) => {
+    const snapshot = JSON.stringify(f);
+    if (snapshot === lastSavedRef.current) return;
+    lastSavedRef.current = snapshot;
+    setSaveStatus("saving");
+    try { await persistForm(f); setSaveStatus(prev => prev === "saving" ? "saved" : prev); }
+    catch (err) { console.error(err); lastSavedRef.current = ""; setSaveStatus("error"); }
+  };
+  useEffect(() => {
+    if (!autoSave || !showForm) return;
+    if (JSON.stringify(form) === lastSavedRef.current) return;
+    setSaveStatus("pending");
+    // Wait longer while the opponent name is being typed so partial names don't create opponents
+    const opponentChanged = form.opponent.trim() !== (editingGame?.opponent || "");
+    const t = setTimeout(() => autoSaveNow(form), opponentChanged ? 2000 : 600);
+    return () => clearTimeout(t);
+  }, [form, autoSave, showForm]);
+
+  const closeForm = () => {
+    if (autoSave) autoSaveNow(form); // flush any pending edit
+    setShowForm(false);
   };
 
   const handleDelete = async () => {
@@ -454,7 +521,25 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
       {renderPlayerProfile()}
 
       {/* ─── Game Edit Form ───────────────────────────────────── */}
-      <FormModal visible={showForm} title={editingGame ? "Edit Game" : "Add Game"} onClose={() => setShowForm(false)}>
+      <FormModal visible={showForm} title={liveMode ? "🔴 Live Game" : editingGame ? "Edit Game" : "Add Game"} onClose={closeForm}>
+        {autoSave && (
+          <Text style={st.saveStatus}>
+            {saveStatus === "saving" ? "Saving…" : saveStatus === "pending" ? "Unsaved changes…" : saveStatus === "error" ? "⚠️ Save failed — will retry on next change" : saveStatus === "saved" ? "✓ All changes saved" : "Changes save automatically"}
+          </Text>
+        )}
+        {!showDetails ? (
+          <TouchableOpacity onPress={() => setShowDetails(true)} style={st.detailsSummary} activeOpacity={0.7}>
+            <Text style={{ color: colors.text, fontWeight: "600", fontSize: 14, flex: 1 }} numberOfLines={1}>
+              vs {form.opponent || "?"}<Text style={{ color: colors.textMuted, fontWeight: "400" }}>{form.date ? `  •  ${formatDate(form.date)}` : ""}{form.time ? `  •  ${form.time}` : ""}</Text>
+            </Text>
+            <Text style={{ color: colors.blue, fontSize: 12 }}>Details ▾</Text>
+          </TouchableOpacity>
+        ) : (<>
+        {liveMode && (
+          <TouchableOpacity onPress={() => setShowDetails(false)} style={{ alignSelf: "flex-end", marginBottom: 6 }}>
+            <Text style={{ color: colors.blue, fontSize: 12 }}>Hide details ▴</Text>
+          </TouchableOpacity>
+        )}
         <FormDateInput label="Date" value={form.date} onChangeText={v => setForm({ ...form, date: v })} />
         <FormTimeInput label="Time" value={form.time} onChangeText={v => setForm({ ...form, time: v })} />
         <FormInput label="Opponent" value={form.opponent} onChangeText={v => setForm({ ...form, opponent: v })} placeholder="e.g. Ballhogs" />
@@ -473,6 +558,7 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
             </ScrollView>
           </View>
         )}
+        </>)}
 
         {/* Keepers (set up first so goals against can be attributed) */}
         <Text style={st.formSection}>KEEPERS</Text>
@@ -485,7 +571,7 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
                   {keeperEligible.map(p => (
                     <TouchableOpacity key={p.id} onPress={() => { const u = [...form.keeperAppearances]; u[i].playerId = p.id; setForm({ ...form, keeperAppearances: u }); }}
                       style={[st.playerChip, ka.playerId === p.id && st.playerChipActive]}>
-                      <Text style={[st.playerChipText, ka.playerId === p.id && st.playerChipTextActive]}>{p.name.split(" ")[0]}</Text>
+                      <Text style={[st.playerChipText, ka.playerId === p.id && st.playerChipTextActive]}>{shortName(p.id)}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -528,7 +614,7 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
                   <Text style={{ color: e.type === "for" ? colors.accent : colors.danger, fontWeight: "700", fontFamily: "monospace", width: 24 }}>{e.order}</Text>
                   <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>
                     {e.type === "for" ? `⚽ ${p?.name || "?"}` : `❌ Goal against`}
-                    {e.type === "against" && k ? <Text style={{ color: colors.textDim }}> ({k.name.split(" ")[0]})</Text> : null}
+                    {e.type === "against" && k ? <Text style={{ color: colors.textDim }}> ({shortName(k.id)})</Text> : null}
                   </Text>
                   <TouchableOpacity onPress={() => removeTimelineEvent(i)} style={{ padding: 4 }}><Text style={{ color: colors.danger, fontSize: 14 }}>✕</Text></TouchableOpacity>
                 </View>
@@ -539,18 +625,18 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
 
         {/* Goal Against button */}
         <TouchableOpacity onPress={addGoalAgainst} style={st.goalAgainstBtn} activeOpacity={0.7}>
-          <Text style={st.goalAgainstText}>❌ Goal Against{currentKeeperId ? ` (${players.find(p => p.id === currentKeeperId)?.name.split(" ")[0]})` : ""}</Text>
+          <Text style={st.goalAgainstText}>❌ Goal Against{currentKeeperId ? ` (${shortName(currentKeeperId)})` : ""}</Text>
         </TouchableOpacity>
 
         {/* Player grid for goals for */}
         <Text style={{ fontSize: 12, color: colors.textDim, marginTop: 8, marginBottom: 8 }}>Tap a player for a goal scored:</Text>
         <View style={st.playerGrid}>
-          {players.filter(p => isPlayerAvailableForGame(p, form.date)).map(p => {
+          {roster.map(p => {
             const gc = form.goalTimeline.filter(e => e.type === "for" && e.playerId === p.id).length;
             return (
               <TouchableOpacity key={p.id} onPress={() => addGoalFor(p.id)} style={[st.gridBtn, gc > 0 && st.gridBtnActive]} activeOpacity={0.6}>
                 <Text style={[st.gridBtnNumber, gc > 0 && st.gridBtnNumberActive]}>{p.number}</Text>
-                <Text style={[st.gridBtnName, gc > 0 && st.gridBtnNameActive]} numberOfLines={1}>{p.name.split(" ")[0]}</Text>
+                <Text style={[st.gridBtnName, gc > 0 && st.gridBtnNameActive]} numberOfLines={1}>{shortName(p.id)}</Text>
                 {gc > 0 && <View style={st.goalBadge}><Text style={st.goalBadgeText}>{gc}</Text></View>}
               </TouchableOpacity>
             );
@@ -560,13 +646,13 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
         {/* Absent */}
         <Text style={st.formSection}>WHO'S MISSING?</Text>
         <View style={st.playerGrid}>
-          {players.filter(p => isPlayerAvailableForGame(p, form.date)).map(p => {
+          {roster.map(p => {
             const isAbsent = form.absentPlayerIds.includes(p.id);
             return (
               <TouchableOpacity key={p.id} onPress={() => setForm({ ...form, absentPlayerIds: isAbsent ? form.absentPlayerIds.filter(id => id !== p.id) : [...form.absentPlayerIds, p.id] })}
                 style={[st.gridBtn, isAbsent && st.gridBtnAbsent]} activeOpacity={0.6}>
                 <Text style={[st.gridBtnNumber, isAbsent && { color: colors.danger }]}>{p.number}</Text>
-                <Text style={[st.gridBtnName, isAbsent && { color: colors.danger }]} numberOfLines={1}>{p.name.split(" ")[0]}</Text>
+                <Text style={[st.gridBtnName, isAbsent && { color: colors.danger }]} numberOfLines={1}>{shortName(p.id)}</Text>
                 {isAbsent && <View style={st.absentBadge}><Text style={{ color: "#fff", fontSize: 10, fontWeight: "800" }}>OUT</Text></View>}
               </TouchableOpacity>
             );
@@ -595,7 +681,11 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
 
         <FormInput label="Notes" value={form.notes} onChangeText={v => setForm({ ...form, notes: v })} placeholder="How did the game go?" multiline />
         {editingGame && canEdit && <TouchableOpacity onPress={handleDelete} style={st.deleteBtn}><Text style={st.deleteBtnText}>Delete Game</Text></TouchableOpacity>}
-        <FormButtons onCancel={() => setShowForm(false)} onSave={handleSave} saving={saving} saveLabel={editingGame ? "Update" : "Add Game"} />
+        {autoSave ? (
+          <TouchableOpacity onPress={closeForm} style={st.doneBtn}><Text style={st.doneBtnText}>Done</Text></TouchableOpacity>
+        ) : (
+          <FormButtons onCancel={() => setShowForm(false)} onSave={handleSave} saving={saving} saveLabel={editingGame ? "Update" : "Add Game"} />
+        )}
       </FormModal>
     </GameEditContext.Provider>
   );
@@ -633,6 +723,11 @@ const styles = StyleSheet.create({
   tinyLabel: { fontSize: 10, color: colors.textDim, marginBottom: 2 },
   deleteBtn: { padding: 12, borderRadius: radii.md, backgroundColor: colors.dangerDim, alignItems: "center", marginTop: 12 },
   deleteBtnText: { color: colors.danger, fontWeight: "600", fontSize: 14 },
+  // Live mode
+  saveStatus: { fontSize: 12, color: colors.textMuted, textAlign: "center", marginBottom: 10 },
+  detailsSummary: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: radii.sm, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, marginBottom: 4 },
+  doneBtn: { backgroundColor: colors.accent, padding: 14, borderRadius: radii.md, alignItems: "center", marginTop: 12 },
+  doneBtnText: { color: colors.bg, fontWeight: "700", fontSize: 15 },
   // Timeline
   timelineRow: { flexDirection: "row" as const, alignItems: "center" as const, paddingVertical: 8, paddingHorizontal: 10, borderLeftWidth: 3, borderRadius: 6, backgroundColor: colors.bg, marginBottom: 4, gap: 8 },
   liveScore: { flexDirection: "row" as const, justifyContent: "center" as const, alignItems: "center" as const, gap: 24, paddingVertical: 12, marginBottom: 8, backgroundColor: colors.surface, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border },
