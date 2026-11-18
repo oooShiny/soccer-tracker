@@ -167,3 +167,36 @@ export const buildShortNames = (players: Player[]): Record<string, string> => {
   }
   return out;
 };
+
+// ─── Goalkeeper Stats ─────────────────────────────────────────────
+// `apps` is fractional: a keeper who played 50% of a game is credited half a game.
+export interface KeeperEntry { playerId: string; name: string; number: number; apps: number; ga: number; gaPerApp: number; cleanSheets: number; }
+export function computeKeeperLeaderboard(games: Game[], players: Player[]): KeeperEntry[] {
+  const keeperMap: Record<string, { apps: number; ga: number; cleanSheets: number }> = {};
+
+  for (const game of games) {
+    if (game.ourScore == null) continue;
+    for (const ka of game.keeperAppearances) {
+      if (!keeperMap[ka.playerId]) keeperMap[ka.playerId] = { apps: 0, ga: 0, cleanSheets: 0 };
+      // Use pct if available, fall back to minutes/90 for legacy data
+      const pct = ka.pct != null ? ka.pct : (ka.minutes ? Math.round((ka.minutes / 90) * 100) : 100);
+      keeperMap[ka.playerId].apps += pct / 100;
+      keeperMap[ka.playerId].ga += ka.goalsAgainst;
+      if (ka.goalsAgainst === 0 && pct >= 45) keeperMap[ka.playerId].cleanSheets++;
+    }
+  }
+
+  return Object.entries(keeperMap).map(([id, d]) => {
+    const p = players.find(pl => pl.id === id);
+    return {
+      playerId: id, name: p?.name || "Unknown", number: p?.number || 0,
+      apps: Math.round(d.apps * 100) / 100, ga: d.ga, // round away float drift (e.g. 0.33 + 0.67)
+      gaPerApp: d.apps > 0 ? d.ga / d.apps : 0,
+      cleanSheets: d.cleanSheets,
+    };
+  }).sort((a, b) => a.gaPerApp - b.gaPerApp || b.apps - a.apps); // lower GA/G is better; more apps breaks ties
+}
+
+// Fractional keeper games: whole numbers as-is, otherwise one decimal (e.g. 3.5)
+export const formatKeeperGames = (apps: number): string =>
+  Number.isInteger(apps) ? String(apps) : apps.toFixed(1);

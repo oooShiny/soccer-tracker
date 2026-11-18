@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-nati
 import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
 import { useSeasons, useGames, usePlayers } from "../hooks/useFirestore";
-import { formatDate, isInactiveForGame, isAbsentFromGame } from "../services/utils";
+import { formatDate, isInactiveForGame, isAbsentFromGame, computeKeeperLeaderboard, formatKeeperGames } from "../services/utils";
 import { Card, Badge } from "../components/SharedUI";
 import { useGameEdit } from "../components/GameEditProvider";
 import type { Game, GoalEvent, Player } from "../types";
@@ -181,35 +181,6 @@ function computeStreaks(games: Game[], players: Player[], skipDeactivated = true
       return { playerId: id, name: p?.name || "Unknown", number: p?.number || 0, longest: d.longest, current: d.current };
     })
     .sort((a, b) => b.longest - a.longest || b.current - a.current);
-}
-
-interface KeeperEntry { playerId: string; name: string; number: number; apps: number; ga: number; gaPerApp: number; saves: number; cleanSheets: number; }
-function computeKeeperLeaderboard(games: Game[], players: Player[]): KeeperEntry[] {
-  const keeperMap: Record<string, { apps: number; ga: number; saves: number; pctTotal: number; cleanSheets: number }> = {};
-
-  for (const game of games) {
-    if (game.ourScore == null) continue;
-    for (const ka of game.keeperAppearances) {
-      if (!keeperMap[ka.playerId]) keeperMap[ka.playerId] = { apps: 0, ga: 0, saves: 0, pctTotal: 0, cleanSheets: 0 };
-      keeperMap[ka.playerId].apps++;
-      keeperMap[ka.playerId].ga += ka.goalsAgainst;
-      keeperMap[ka.playerId].saves += ka.saves;
-      // Use pct if available, fall back to minutes/90 for legacy data
-      const pct = ka.pct != null ? ka.pct : (ka.minutes ? Math.round((ka.minutes / 90) * 100) : 100);
-      keeperMap[ka.playerId].pctTotal += pct;
-      if (ka.goalsAgainst === 0 && pct >= 45) keeperMap[ka.playerId].cleanSheets++;
-    }
-  }
-
-  return Object.entries(keeperMap).map(([id, d]) => {
-    const p = players.find(pl => pl.id === id);
-    return {
-      playerId: id, name: p?.name || "Unknown", number: p?.number || 0,
-      apps: d.apps, ga: d.ga,
-      gaPerApp: d.apps > 0 ? d.ga / d.apps : 0,
-      saves: d.saves, cleanSheets: d.cleanSheets,
-    };
-  }).sort((a, b) => a.gaPerApp - b.gaPerApp || b.apps - a.apps); // lower GA/G is better; more apps breaks ties
 }
 
 // ─── Leaderboard content (category tabs + tables) ─────────────────
@@ -414,14 +385,14 @@ export function LeaderboardContent({ games, players, skipDeactivated = true, mar
             <Text style={[st.tableCol, st.numCol]}>CS</Text>
             <Text style={[st.tableCol, st.numCol]}>GA</Text>
             <Text style={[st.tableCol, st.numCol]}>GA/G</Text>
-            <Text style={[st.tableCol, st.numCol]}>Svs</Text>
+            <Text style={[st.tableCol, st.numCol]}>GP</Text>
           </View>
           {keepers.map((e, i) => (
             <Row key={e.playerId} entry={e} i={i}>
               <Text style={[st.mono, st.numCol, { color: colors.purple, fontWeight: "700" }]}>{e.cleanSheets}</Text>
               <Text style={[st.mono, st.numCol, { color: colors.danger }]}>{e.ga}</Text>
               <Text style={[st.mono, st.numCol, { color: e.gaPerApp <= 1 ? colors.accent : e.gaPerApp <= 2 ? colors.warn : colors.danger }]}>{e.gaPerApp.toFixed(1)}</Text>
-              <Text style={[st.mono, st.numCol, { color: colors.accent }]}>{e.saves}</Text>
+              <Text style={[st.mono, st.numCol, { color: colors.textMuted }]}>{formatKeeperGames(e.apps)}</Text>
             </Row>
           ))}
           {keepers.length === 0 && <Card><Text style={st.empty}>No goalkeeper data yet.</Text></Card>}

@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
 import { colors, spacing, radii } from "../theme";
 import { useAuth } from "../hooks/useAuth";
-import { usePlayers, useSeasons } from "../hooks/useFirestore";
+import { usePlayers, useSeasons, useGames } from "../hooks/useFirestore";
+import { computeKeeperLeaderboard, formatKeeperGames } from "../services/utils";
 import { createPlayer, updatePlayer } from "../services/firestore";
 import { Card, Badge, StatBox } from "../components/SharedUI";
 import { useGameEdit } from "../components/GameEditProvider";
@@ -22,6 +23,7 @@ export function PlayersScreen() {
   const { teamId, canEdit } = useAuth();
   const { data: players } = usePlayers(teamId);
   const { data: seasons } = useSeasons(teamId);
+  const { data: games } = useGames(teamId);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -34,6 +36,14 @@ export function PlayersScreen() {
   const keepers = players.filter(p => p.active !== false && p.keeperStats && !isInactiveForSeason(p, activeSeason?.id));
   const inactivePlayers = players.filter(p => p.active !== false && isInactiveForSeason(p, activeSeason?.id));
   const deactivatedPlayers = players.filter(p => p.active === false);
+
+  // Career keeper stats computed from game results (GP is fractional by % of game played)
+  const keeperStatsById = useMemo(() => {
+    const map: Record<string, { apps: number; ga: number; cleanSheets: number }> = {};
+    for (const e of computeKeeperLeaderboard(games, players)) map[e.playerId] = e;
+    return map;
+  }, [games, players]);
+  const kStats = (id: string) => keeperStatsById[id] || { apps: 0, ga: 0, cleanSheets: 0 };
 
   const openNew = () => { setEditingPlayer(null); setForm(emptyForm()); setShowForm(true); };
   const openEdit = (p: Player) => { setEditingPlayer(p); setForm(playerToForm(p)); setShowForm(true); setSelectedPlayer(null); };
@@ -107,11 +117,10 @@ export function PlayersScreen() {
             <Text style={[s.colText, { width: 36 }]}>#</Text>
             <Text style={[s.colText, { flex: 1 }]}>Player</Text>
             <Text style={[s.colText, s.numCol]}>GA</Text>
-            <Text style={[s.colText, s.numCol]}>Svs</Text>
             <Text style={[s.colText, s.numCol]}>CS</Text>
             <Text style={[s.colText, s.numCol]}>GP</Text>
           </View>
-          {keepers.sort((a, b) => (b.keeperStats?.appearances || 0) - (a.keeperStats?.appearances || 0)).map(p => (
+          {keepers.sort((a, b) => kStats(b.id).apps - kStats(a.id).apps).map(p => (
             <TouchableOpacity key={p.id} onPress={() => setSelectedPlayer(p)} activeOpacity={0.7}>
               <Card style={{ padding: 12, paddingHorizontal: 16 }}>
                 <View style={s.playerRow}>
@@ -120,10 +129,9 @@ export function PlayersScreen() {
                     <Text style={s.playerName}>{p.name}</Text>
                     {p.goals > 0 && <Text style={s.dualNote}>Also: {p.goals}G in field</Text>}
                   </View>
-                  <Text style={[s.mono, s.numCol, { color: colors.danger, fontWeight: "700" }]}>{p.keeperStats!.goalsAgainst}</Text>
-                  <Text style={[s.mono, s.numCol, { color: colors.accent, fontWeight: "700" }]}>{p.keeperStats!.saves}</Text>
-                  <Text style={[s.mono, s.numCol, { color: colors.purple, fontWeight: "700" }]}>{p.keeperStats!.cleanSheets}</Text>
-                  <Text style={[s.mono, s.numCol, { color: colors.textMuted }]}>{p.keeperStats!.appearances}</Text>
+                  <Text style={[s.mono, s.numCol, { color: colors.danger, fontWeight: "700" }]}>{kStats(p.id).ga}</Text>
+                  <Text style={[s.mono, s.numCol, { color: colors.purple, fontWeight: "700" }]}>{kStats(p.id).cleanSheets}</Text>
+                  <Text style={[s.mono, s.numCol, { color: colors.textMuted }]}>{formatKeeperGames(kStats(p.id).apps)}</Text>
                 </View>
               </Card>
             </TouchableOpacity>
@@ -187,9 +195,9 @@ export function PlayersScreen() {
               {selectedPlayer.goals > 0 && <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 16 }} />}
               <Text style={s.modalLabel}>KEEPER STATS</Text>
               <View style={{ flexDirection: "row", justifyContent: "space-around", marginBottom: 8 }}>
-                <StatBox label="GA" value={selectedPlayer.keeperStats.goalsAgainst} color={colors.danger} />
-                <StatBox label="Saves" value={selectedPlayer.keeperStats.saves} color={colors.accent} />
-                <StatBox label="CS" value={selectedPlayer.keeperStats.cleanSheets} color={colors.purple} />
+                <StatBox label="GP" value={formatKeeperGames(kStats(selectedPlayer.id).apps)} color={colors.text} />
+                <StatBox label="GA" value={kStats(selectedPlayer.id).ga} color={colors.danger} />
+                <StatBox label="CS" value={kStats(selectedPlayer.id).cleanSheets} color={colors.purple} />
               </View>
             </View>
           )}

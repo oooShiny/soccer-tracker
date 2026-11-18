@@ -10,7 +10,7 @@ import { FormModal, FormInput, FormDateInput, FormTimeInput, FormButtons, NumInp
 import type { Game, GoalEvent, GameScorer, Opponent } from "../types";
 
 // ─── Form Types ───────────────────────────────────────────────────
-interface KAForm { playerId: string; pct: string; saves: string; }
+interface KAForm { playerId: string; pct: string; saves: string; } // saves no longer edited; carried through so existing data is kept
 interface GameForm {
   date: string; time: string; opponent: string; notes: string;
   isPlayoff: boolean;
@@ -462,7 +462,7 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
               <Text style={st.modalLabel}>GOALKEEPER{selectedGame.keeperAppearances.length > 1 ? "S" : ""}</Text>
               {selectedGame.keeperAppearances.map((ka, i) => {
                 const k = players.find(p => p.id === ka.playerId);
-                return (<View key={i} style={st.keeperRow}><Text style={{ color: colors.text, fontSize: 14 }}>🧤 {k?.name || "Unknown"} <Text style={{ color: colors.textMuted }}>{ka.pct != null ? `${ka.pct}%` : `${ka.minutes}'`}</Text></Text><View style={{ flexDirection: "row", gap: 12 }}><Text style={{ color: colors.danger, fontSize: 12 }}>{ka.goalsAgainst} GA</Text><Text style={{ color: colors.accent, fontSize: 12 }}>{ka.saves} Svs</Text></View></View>);
+                return (<View key={i} style={st.keeperRow}><Text style={{ color: colors.text, fontSize: 14 }}>🧤 {k?.name || "Unknown"} <Text style={{ color: colors.textMuted }}>{ka.pct != null ? `${ka.pct}%` : `${ka.minutes}'`}</Text></Text><Text style={{ color: colors.danger, fontSize: 12 }}>{ka.goalsAgainst} GA</Text></View>);
               })}
             </View>
           )}
@@ -580,7 +580,6 @@ export function GameEditProvider({ children }: { children: React.ReactNode }) {
             </View>
             <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
               <View style={{ alignItems: "center" }}><Text style={st.tinyLabel}>% of Game</Text><NumInput value={ka.pct} onChangeText={v => { const u = [...form.keeperAppearances]; u[i].pct = v; setForm({ ...form, keeperAppearances: u }); }} /></View>
-              <View style={{ alignItems: "center" }}><Text style={st.tinyLabel}>Saves</Text><NumInput value={ka.saves} onChangeText={v => { const u = [...form.keeperAppearances]; u[i].saves = v; setForm({ ...form, keeperAppearances: u }); }} /></View>
             </View>
           </View>
         ))}
