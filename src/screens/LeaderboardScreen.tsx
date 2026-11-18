@@ -209,7 +209,7 @@ function computeKeeperLeaderboard(games: Game[], players: Player[]): KeeperEntry
       gaPerApp: d.apps > 0 ? d.ga / d.apps : 0,
       saves: d.saves, cleanSheets: d.cleanSheets,
     };
-  }).sort((a, b) => b.cleanSheets - a.cleanSheets || a.gaPerApp - b.gaPerApp);
+  }).sort((a, b) => a.gaPerApp - b.gaPerApp || b.apps - a.apps); // lower GA/G is better; more apps breaks ties
 }
 
 // ─── Leaderboard content (category tabs + tables) ─────────────────
@@ -407,7 +407,7 @@ export function LeaderboardContent({ games, players, skipDeactivated = true, mar
       {/* ─── Goalkeepers ──────────────────────────────────────── */}
       {category === "keeper" && (
         <>
-          <Podium entries={keepers.map(e => ({ ...e, cleanSheetDisplay: e.cleanSheets }))} valueKey="cleanSheets" valueSuffix="clean sheets" />
+          <Podium entries={keepers.map(e => ({ ...e, gaDisplay: e.gaPerApp.toFixed(2) }))} valueKey="gaDisplay" valueSuffix="GA/game" />
           <View style={st.tableHeader}>
             <Text style={[st.tableCol, { width: 28 }]}>#</Text>
             <Text style={[st.tableCol, { flex: 1 }]}>Player</Text>
